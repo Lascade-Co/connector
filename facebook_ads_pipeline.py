@@ -20,7 +20,7 @@ def run():
     fb_ads = facebook_ads_source()
 
     # Metrics (backfill full history, then incremental)
-    fb_insights = facebook_insights_source(initial_load_past_days=14)
+    fb_insights = facebook_insights_source()
 
     # Run both together
     info = pipeline.run([fb_ads, fb_insights])
