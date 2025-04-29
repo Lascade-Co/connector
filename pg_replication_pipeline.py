@@ -4,6 +4,8 @@ import psycopg2
 import psycopg2.extras
 from clickhouse_connect import get_client
 import dlt
+
+from constants import SELECTED_TABLES
 from pg_replication import replication_resource
 from pg_replication.helpers import init_replication
 from utils import _load_secrets
@@ -124,16 +126,14 @@ def main() -> None:
             slot_name=SLOT,
             pub_name=PUB,
             schema_name=SCHEMA,
+            table_names=SELECTED_TABLES,
             persist_snapshots=True,
             reset=True
         )
 
         logging.info("Snapshot complete, starting replication")
 
-        for resource in snapshot:
-            logging.info(f"Resource: {resource.name} - {resource.table_name}")
-
-        pipe.run([r for r in snapshot if r.table_name != f"server_logs_log"])
+        pipe.run(snapshot)
 
     logging.info("Streaming logical changes …")
     pipe.run(replication_resource(SLOT, PUB))
