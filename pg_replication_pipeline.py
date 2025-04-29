@@ -131,9 +131,7 @@ def main() -> None:
         logging.info("Snapshot complete, starting replication")
 
         for resource in snapshot:
-            logging.info(f"Resource: {resource.name}")
-            logging.info(f"  - {resource.state}")
-            logging.info(f"  - {resource.table_name}")
+            logging.info(f"Resource: {resource.name} - {resource.table_name}")
 
         pipe.run([r for r in snapshot if r.table_name != f"server_logs_log"])
 
