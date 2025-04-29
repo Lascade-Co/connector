@@ -127,6 +127,12 @@ def main() -> None:
             persist_snapshots=True,
             reset=True
         )
+
+        snapshot.resources = [
+            r for r in snapshot.resources
+            if r.name != f"{SCHEMA}__server_logs_log"
+        ]
+
         pipe.run(snapshot)
 
     logging.info("Streaming logical changes …")

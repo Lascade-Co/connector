@@ -6,4 +6,4 @@ log_level="WARNING"  # the system log level of dlt
 dlthub_telemetry = false
 
 [sources.facebook_ads]
-account_id = "account_id" # please set me up!
+account_id = "344051707969015" # please set me up!
