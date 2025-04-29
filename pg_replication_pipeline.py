@@ -128,12 +128,14 @@ def main() -> None:
             reset=True
         )
 
-        snapshot.resources = [
-            r for r in snapshot.resources
-            if r.name != f"{SCHEMA}__server_logs_log"
-        ]
+        logging.info("Snapshot complete, starting replication")
 
-        pipe.run(snapshot)
+        for resource in snapshot:
+            logging.info(f"Resource: {resource.name}")
+            logging.info(f"  - {resource.state}")
+            logging.info(f"  - {resource.table_name}")
+
+        pipe.run([r for r in snapshot if r.table_name != f"server_logs_log"])
 
     logging.info("Streaming logical changes …")
     pipe.run(replication_resource(SLOT, PUB))
