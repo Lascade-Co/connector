@@ -124,7 +124,8 @@ def main() -> None:
             slot_name=SLOT,
             pub_name=PUB,
             schema_name=SCHEMA,
-            persist_snapshots=True
+            persist_snapshots=True,
+            reset=True
         )
         pipe.run(snapshot)
 
