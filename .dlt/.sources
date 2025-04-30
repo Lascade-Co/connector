@@ -60,3 +60,29 @@ sources:
         git_sha: e43cd2be48ac32854912b99b7527e755239aceba
         sha3_256: 4a01818b37891878bd41c9fb4db0cb217357443899e8f7c89fc1342665f01bec
     dlt_version_constraint: '>=0.5.1'
+  google_ads:
+    is_dirty: false
+    last_commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
+    last_commit_timestamp: '2025-04-22T16:07:08+02:00'
+    files:
+      google_ads/__init__.py:
+        commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
+        git_sha: 16ceeee4bdbf448149edbeeef30f56279065ece5
+        sha3_256: 5a59e253fa7d81ec53f432c6dc7d7b3a66b8d1f740f39cf355cf2c7f49edcab0
+      google_ads/setup_script_gcp_oauth.py:
+        commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
+        git_sha: 206483f3b2513eab411dd0d9ad5be00a07b90a40
+        sha3_256: 25fa0d4a419e70594dd63d33fd87cd6b4922250264576b71d469ec74bbeb0ab7
+      google_ads/README.md:
+        commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
+        git_sha: b2baa96d1adda06fdf9ecdd990c0945c4f59c904
+        sha3_256: 527eec8c0007b50c1f9a60c3a37b7ac015cbe98ffc2c5377267601c1d72ee3cb
+      google_ads/helpers/__init__.py:
+        commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
+        git_sha: e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+        sha3_256: a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a
+      google_ads/helpers/data_processing.py:
+        commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
+        git_sha: 92ad4eb6727610cf54271b797da39e6c28110a30
+        sha3_256: 4e7385fefa3ee9025541f31f744d0c9a046f17c5684bdc8e6281ecac1ba9f4b4
+    dlt_version_constraint: '>=0.5.1'
