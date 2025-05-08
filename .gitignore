@@ -10,3 +10,5 @@ secrets.toml
 *.wal
 
 .idea/
+
+*.log
