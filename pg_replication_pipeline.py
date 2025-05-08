@@ -16,11 +16,6 @@ SLOT = "analytics_slot"
 PUB = "analytics_pub"
 SCHEMA = "public"  # Postgres schema to replicate
 
-logging.basicConfig(
-    level=logging.INFO, format="%(levelname)s │ %(message)s", stream=sys.stdout
-)
-
-
 def _check_pg() -> None:
     """Connectivity + logical-replication prerequisites."""
     pg_cfg = {
@@ -115,7 +110,7 @@ def get_pipeline() -> dlt.Pipeline:
     )
 
 
-def main() -> None:
+def run() -> None:
     preflight()
 
     pipe = get_pipeline()
@@ -142,7 +137,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     try:
-        main()
+        run()
     except SystemExit as exc:
         logging.error("❌  %s", exc)
         sys.exit(1)
