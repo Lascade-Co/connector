@@ -4,7 +4,7 @@ import time
 
 import schedule
 
-import pg_replication_pipeline
+from pipelines import pg
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,7 +19,7 @@ def safe_pg_pipeline():
     """Run the pg_replication_pipeline safely."""
     # noinspection PyBroadException
     try:
-        pg_replication_pipeline.run()
+        pg.run()
     except Exception:
         logging.exception(f"Error in pg_replication_pipeline", exc_info=True)
 

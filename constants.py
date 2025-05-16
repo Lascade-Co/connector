@@ -8,3 +8,5 @@ SELECTED_TABLES = [
     "users_providerservice",
     "users_usersession"
 ]
+
+LOG_TABLE = "server_logs_log"

@@ -39,3 +39,16 @@ def _load_secrets(path: Path | None = None) -> tuple[Dict[str, Any], Dict[str, A
     ch_cfg["secure"] = bool(ch_cfg.get("secure", 0))
 
     return pg_cfg, ch_cfg
+
+
+def get(dictionary: Dict[str, Any], *keys: str | int, default: Any = None) -> Any:
+    """
+    Get a value from a nested dictionary using a list of keys.
+    If the key is not found, return the default value.
+    """
+    for key in keys:
+        try:
+            dictionary = dictionary[key]
+        except KeyError | TypeError | IndexError:
+            return default
+    return dictionary

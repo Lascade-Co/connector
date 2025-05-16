@@ -1,20 +1,12 @@
 import logging
-import sys
 import psycopg2
 import psycopg2.extras
 from clickhouse_connect import get_client
 import dlt
 
-from constants import SELECTED_TABLES
-from pg_replication import replication_resource
-from pg_replication.helpers import init_replication
 from utils import _load_secrets
 
 PG, CH = _load_secrets()  # ← credentials ready for use
-
-SLOT = "analytics_slot"
-PUB = "analytics_pub"
-SCHEMA = "public"  # Postgres schema to replicate
 
 def _check_pg() -> None:
     """Connectivity + logical-replication prerequisites."""
@@ -102,45 +94,9 @@ def preflight() -> None:
     logging.info("Environment validation complete.\n")
 
 
-def get_pipeline() -> dlt.Pipeline:
+def get_pipeline(name: str) -> dlt.Pipeline:
     return dlt.pipeline(
-        pipeline_name="pg_to_click",
+        pipeline_name=name,
         destination="clickhouse",
         dataset_name=CH["database"],
     )
-
-
-def run() -> None:
-    preflight()
-
-    pipe = get_pipeline()
-
-    if pipe.first_run:
-        logging.info("First run – taking initial snapshot")
-        snapshot = init_replication(
-            slot_name=SLOT,
-            pub_name=PUB,
-            schema_name=SCHEMA,
-            table_names=SELECTED_TABLES,
-            persist_snapshots=True,
-            reset=True
-        )
-
-        logging.info("Snapshot complete, starting replication")
-
-        pipe.run(snapshot)
-
-    logging.info("Streaming logical changes …")
-    pipe.run(replication_resource(SLOT, PUB))
-    logging.info("Run finished")
-
-
-if __name__ == "__main__":
-    try:
-        run()
-    except SystemExit as exc:
-        logging.error("❌  %s", exc)
-        sys.exit(1)
-    except Exception as e:
-        logging.exception(f"Unhandled pipeline error {e}", exc_info=True)
-        sys.exit(2)
