@@ -9,7 +9,7 @@ import logging, dlt
 from pipelines.pg.parsers import legacy_inline_ad, car_ads, flight_ads, hotel_ads
 
 SLOT_INLINE_ADS = "slot_inline_ads"
-SLOT_AD_FETCH = "slot_ad_fetch"
+PUB_INLINE_ADS = "pub_inline_ads"
 
 
 # ----------------------------  transformers  --------------------------------
@@ -27,18 +27,13 @@ def inline_ads(rows):
             parser = flight_ads
         elif row["name"].endswith("hotel"):
             parser = hotel_ads
+        elif row["name"].endswith("ad_fetch"):
+            parser = legacy_inline_ad
         else:
             logging.warning("Unknown ad type: %s", row["name"])
             continue
 
         for ad in parser(row):
-            yield ad
-
-
-@dlt.transformer(write_disposition="append", primary_key="id")
-def inline_ads_legacy(rows):
-    for row in rows:
-        for ad in legacy_inline_ad(row):
             yield ad
 
 
@@ -51,15 +46,7 @@ def run() -> None:
         logging.info("Taking filtered initial snapshots")
         snap_ads = init_replication(
             slot_name=SLOT_INLINE_ADS,
-            pub_name="pub_inline_ads",
-            schema_name="public",
-            table_names=[LOG_TABLE],
-            persist_snapshots=True,
-            reset=True,
-        )
-        snap_fetch = init_replication(
-            slot_name=SLOT_AD_FETCH,
-            pub_name="pub_ad_fetch",
+            pub_name=PUB_INLINE_ADS,
             schema_name="public",
             table_names=[LOG_TABLE],
             persist_snapshots=True,
@@ -68,18 +55,11 @@ def run() -> None:
 
         logging.info("Taking initial snapshots")
 
-        pipe.run([
-            snap_ads | inline_ads,
-            snap_fetch | inline_ads_legacy
-        ])
+        pipe.run(snap_ads | inline_ads)
 
     logging.info("Streaming logical changes …")
 
-    tasks = [
-        replication_resource(SLOT_INLINE_ADS, "pub_inline_ads") | inline_ads,
-        replication_resource(SLOT_AD_FETCH, "pub_ad_fetch") | inline_ads_legacy
-    ]
-    pipe.run(tasks)
+    pipe.run(replication_resource(SLOT_INLINE_ADS, PUB_INLINE_ADS) | inline_ads)
 
 
 if __name__ == "__main__":

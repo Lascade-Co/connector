@@ -25,6 +25,7 @@ def inline_ad(row, origin_date, destination_date, origin, destination):
             "destination": destination,
             "os": get(row, "data", "kwargs", "os"),
             "country": get(row, "data", "kwargs", "country"),
+            "version": 2.0,
         }
 
 
@@ -93,4 +94,5 @@ def legacy_inline_ad(row: dict):
             "end_date": destination_date,
             "origin": origin,
             "destination": destination,
+            "version": 1.0,
         }
