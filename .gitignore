@@ -12,3 +12,4 @@ secrets.toml
 .idea/
 
 *.log
+volumes/

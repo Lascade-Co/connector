@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgis/postgis:latest
+    restart: always
+    environment:
+      POSTGRES_DB: "analytics"
+      POSTGRES_USER: "django"
+      POSTGRES_PASSWORD: "EAAJbOELsc3wBO5Rvi9lQyZCVTI"
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  clickhouse:
+    image: yandex/clickhouse-server:latest
+    restart: always
+    environment:
+      CLICKHOUSE_USER: "traveler"
+      CLICKHOUSE_PASSWORD: "EAAJbOELsc3wBO5Rvi9lQyZCVTI"
+      CLICKHOUSE_DB: "travel"
+    volumes:
+      - ./volumes/clickhouse:/var/lib/clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"

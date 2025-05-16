@@ -10,12 +10,6 @@ SLOT_INLINE_ADS = "slot_inline_ads"
 SLOT_AD_FETCH = "slot_ad_fetch"
 
 
-def pg_resource(slot, publication, table_name):
-    res = replication_resource(slot, publication)
-    res.name = table_name  # => ClickHouse table name
-    return res
-
-
 # ----------------------------  transformers  --------------------------------
 #
 #  Here is where you turn the JSON into flat columns.
@@ -23,7 +17,7 @@ def pg_resource(slot, publication, table_name):
 #  the relevant rows and columns.
 
 @dlt.transformer(write_disposition="append", primary_key="id")
-def inline_ads(rows=pg_resource(SLOT_INLINE_ADS, "pub_inline_ads", "inline_ads")):
+def inline_ads(rows=replication_resource(SLOT_INLINE_ADS, "pub_inline_ads")):
     for row in rows:
         if row["name"].endswith("car"):
             parser = car_ads
@@ -40,7 +34,7 @@ def inline_ads(rows=pg_resource(SLOT_INLINE_ADS, "pub_inline_ads", "inline_ads")
 
 
 @dlt.transformer(write_disposition="append", primary_key="id")
-def inline_ads_legacy(rows=pg_resource(SLOT_AD_FETCH, "pub_ad_fetch", "inline_ads_legacy")):
+def inline_ads_legacy(rows=replication_resource(SLOT_AD_FETCH, "pub_ad_fetch")):
     for row in rows:
         for ad in legacy_inline_ad(row):
             yield ad
