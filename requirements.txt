@@ -10,3 +10,6 @@ proto-plus~=1.26.1
 google-api-python-client~=2.169.0
 protobuf~=6.30.2
 facebook_business~=22.0.4
+
+schedule~=1.2.2
+facebook_business~=22.0.4
