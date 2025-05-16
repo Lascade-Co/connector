@@ -12,7 +12,7 @@ services:
       - "5432:5432"
 
   clickhouse:
-    image: yandex/clickhouse-server:latest
+    image: clickhouse:25.4.1-jammy
     restart: always
     environment:
       CLICKHOUSE_USER: "traveler"

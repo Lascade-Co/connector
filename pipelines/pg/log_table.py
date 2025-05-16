@@ -1,8 +1,10 @@
+import sys
+
 from constants import LOG_TABLE
 from pg_replication import replication_resource
 from pg_replication.helpers import init_replication
 from pipelines.pg.db_utils import get_pipeline
-import logging, sys, dlt
+import logging, dlt
 
 from pipelines.pg.parsers import legacy_inline_ad, car_ads, flight_ads, hotel_ads
 
@@ -17,7 +19,7 @@ SLOT_AD_FETCH = "slot_ad_fetch"
 #  the relevant rows and columns.
 
 @dlt.transformer(write_disposition="append", primary_key="id")
-def inline_ads(rows=replication_resource(SLOT_INLINE_ADS, "pub_inline_ads")):
+def inline_ads(rows):
     for row in rows:
         if row["name"].endswith("car"):
             parser = car_ads
@@ -34,7 +36,7 @@ def inline_ads(rows=replication_resource(SLOT_INLINE_ADS, "pub_inline_ads")):
 
 
 @dlt.transformer(write_disposition="append", primary_key="id")
-def inline_ads_legacy(rows=replication_resource(SLOT_AD_FETCH, "pub_ad_fetch")):
+def inline_ads_legacy(rows):
     for row in rows:
         for ad in legacy_inline_ad(row):
             yield ad
@@ -63,18 +65,27 @@ def run() -> None:
             persist_snapshots=True,
             reset=True,
         )
-        pipe.run([inline_ads(rows=snap_ads), inline_ads_legacy(rows=snap_fetch)])
+
+        logging.info("Taking initial snapshots")
+
+        pipe.run([
+            snap_ads | inline_ads,
+            snap_fetch | inline_ads_legacy
+        ])
 
     logging.info("Streaming logical changes …")
-    pipe.run([inline_ads, inline_ads_legacy])
+
+    tasks = [
+        replication_resource(SLOT_INLINE_ADS, "pub_inline_ads") | inline_ads,
+        replication_resource(SLOT_AD_FETCH, "pub_ad_fetch") | inline_ads_legacy
+    ]
+    pipe.run(tasks)
 
 
 if __name__ == "__main__":
-    try:
-        run()
-    except SystemExit as exc:
-        logging.error("❌ %s", exc)
-        sys.exit(1)
-    except Exception:
-        logging.exception("Unhandled pipeline error", exc_info=True)
-        sys.exit(2)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s │ %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+    run()
