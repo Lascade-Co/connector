@@ -49,6 +49,6 @@ def get(dictionary: Dict[str, Any], *keys: str | int, default: Any = None) -> An
     for key in keys:
         try:
             dictionary = dictionary[key]
-        except KeyError | TypeError | IndexError:
+        except (KeyError, TypeError, IndexError):
             return default
     return dictionary
