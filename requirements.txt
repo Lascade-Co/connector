@@ -6,7 +6,6 @@ humanize~=4.12.2
 pendulum~=3.1.0
 clickhouse-connect~=0.8.17
 
-schedule~=1.2.2
 proto-plus~=1.26.1
 google-api-python-client~=2.169.0
 protobuf~=6.30.2

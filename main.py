@@ -1,19 +1,14 @@
 import logging
 import sys
-import time
-
-import schedule
 
 from pipelines import pg
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s │ %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("pipeline.log", mode="a")
-    ]
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
+
 
 def safe_pg_pipeline():
     """Run the pg_replication_pipeline safely."""
@@ -25,11 +20,7 @@ def safe_pg_pipeline():
 
 
 def main():
-    schedule.every(1).hours.do(safe_pg_pipeline)
-
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
+    safe_pg_pipeline()
 
 
 if __name__ == "__main__":
