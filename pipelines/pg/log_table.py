@@ -40,6 +40,8 @@ def inline_ads(rows):
 # ----------------------------  pipeline entry  ------------------------------
 
 def run() -> None:
+    logging.info("Logs to ClickHouse pipeline started")
+
     pipe = get_pipeline("logs_to_click")
 
     if pipe.first_run:

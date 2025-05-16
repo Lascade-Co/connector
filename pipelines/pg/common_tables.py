@@ -12,6 +12,8 @@ def run() -> None:
     PUB = "analytics_pub"
     SCHEMA = "public"
 
+    logging.info("Common tables pipeline started")
+
     pipe = get_pipeline("pg_to_click")
 
     if pipe.first_run:
