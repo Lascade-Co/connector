@@ -24,5 +24,10 @@ def main():
 
 
 if __name__ == "__main__":
-    logging.info("Starting pipelines...")
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        # Run the pipeline immediately
+        logging.info("Running pipeline immediately...")
+        safe_pg_pipeline()
+    else:
+        logging.info("Starting pipelines...")
+        main()
