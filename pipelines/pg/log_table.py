@@ -1,22 +1,17 @@
 import sys
+import logging
+import dlt
 
 from constants import LOG_TABLE
 from pg_replication import replication_resource
 from pg_replication.helpers import init_replication
 from pipelines.pg.db_utils import get_pipeline
-import logging, dlt
-
 from pipelines.pg.parsers import legacy_inline_ad, car_ads, flight_ads, hotel_ads
 
-SLOT_INLINE_ADS = "slot_inline_ads"
-PUB_INLINE_ADS = "pub_inline_ads"
+SLOT = "slot_inline_ads"
+PUB = "pub_inline_ads"
+SCHEMA = "public"
 
-
-# ----------------------------  transformers  --------------------------------
-#
-#  Here is where you turn the JSON into flat columns.
-#  The preprocessing logic is up to you – the resource already carries only
-#  the relevant rows and columns.
 
 @dlt.transformer(write_disposition="append", primary_key="id")
 def inline_ads(rows):
@@ -33,11 +28,8 @@ def inline_ads(rows):
             logging.warning("Unknown ad type: %s", row["name"])
             continue
 
-        for ad in parser(row):
-            yield ad
+        yield from parser(row)  # parser returns one or many dicts
 
-
-# ----------------------------  pipeline entry  ------------------------------
 
 def run() -> None:
     logging.info("Logs to ClickHouse pipeline started")
@@ -47,9 +39,9 @@ def run() -> None:
     if pipe.first_run:
         logging.info("Taking filtered initial snapshots")
         snap_ads = init_replication(
-            slot_name=SLOT_INLINE_ADS,
-            pub_name=PUB_INLINE_ADS,
-            schema_name="public",
+            slot_name=SLOT,
+            pub_name=PUB,
+            schema_name=SCHEMA,
             table_names=[LOG_TABLE],
             persist_snapshots=True,
             reset=True,
@@ -61,7 +53,10 @@ def run() -> None:
 
     logging.info("Streaming logical changes …")
 
-    pipe.run(replication_resource(SLOT_INLINE_ADS, PUB_INLINE_ADS) | inline_ads)
+    replication = replication_resource(SLOT, PUB)
+    replication.apply_hints(write_disposition="skip")
+
+    pipe.run(replication | inline_ads)
 
 
 if __name__ == "__main__":
