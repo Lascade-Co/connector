@@ -11,9 +11,9 @@ from pipelines.pg.parsers import legacy_inline_ad, car_ads, flight_ads, hotel_ad
 SLOT = "slot_inline_ad_logs"
 PUB = "pub_inline_ad_logs"
 SCHEMA = "public"
+DESTINATION = "inline_ad_logs"
 
-
-@dlt.transformer(write_disposition="append", primary_key="id", table_name="inline_ad_logs")
+@dlt.transformer(write_disposition="append", primary_key="id", table_name=DESTINATION)
 def inline_ads(rows):
     for row in rows:
         if row["name"].endswith("car"):
@@ -55,7 +55,8 @@ def run() -> None:
     logging.info("Streaming logical changes …")
 
     replication = replication_resource(SLOT, PUB)
-    replication.apply_hints(write_disposition="skip")
+    replication.name = "inline_ad_logs"
+    replication.apply_hints(write_disposition="skip", table_name=DESTINATION)
 
     pipe.run(replication | inline_ads)
 
