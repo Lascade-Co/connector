@@ -55,7 +55,6 @@ def run() -> None:
     logging.info("Streaming logical changes …")
 
     replication = replication_resource(SLOT, PUB)
-    replication.name = "inline_ad_logs"
     replication.apply_hints(write_disposition="skip", table_name=DESTINATION)
 
     pipe.run(replication | inline_ads)
