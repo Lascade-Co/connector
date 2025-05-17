@@ -1,5 +1,8 @@
 import logging
 import sys
+import time
+
+import schedule
 
 from pipelines import pg
 
@@ -19,15 +22,19 @@ def safe_pg_pipeline():
         logging.exception(f"Error in pg_replication_pipeline", exc_info=True)
 
 
-def main():
-    safe_pg_pipeline()
+def run():
+    schedule.every(1).hours.do(safe_pg_pipeline)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
+    if len(sys.argv) > 1 and sys.argv[1] == "schedule":
         # Run the pipeline immediately
         logging.info("Running pipeline immediately...")
-        safe_pg_pipeline()
+        run()
     else:
         logging.info("Starting pipelines...")
-        main()
+        safe_pg_pipeline()
