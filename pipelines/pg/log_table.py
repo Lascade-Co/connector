@@ -8,12 +8,12 @@ from pg_replication.helpers import init_replication
 from pipelines.pg.db_utils import get_pipeline
 from pipelines.pg.parsers import legacy_inline_ad, car_ads, flight_ads, hotel_ads
 
-SLOT = "slot_inline_ads"
-PUB = "pub_inline_ads"
+SLOT = "slot_ad_logs"
+PUB = "pub_ad_logs"
 SCHEMA = "public"
 
 
-@dlt.transformer(write_disposition="append", primary_key="id")
+@dlt.transformer(write_disposition="append", primary_key="id", table_name="ad_logs")
 def inline_ads(rows):
     for row in rows:
         if row["name"].endswith("car"):
@@ -34,7 +34,7 @@ def inline_ads(rows):
 def run() -> None:
     logging.info("Logs to ClickHouse pipeline started")
 
-    pipe = get_pipeline("logs_to_click")
+    pipe = get_pipeline("ad_logs_to_click")
 
     if pipe.first_run:
         logging.info("Taking filtered initial snapshots")
