@@ -1,4 +1,5 @@
 import logging
+
 import psycopg2
 import psycopg2.extras
 from clickhouse_connect import get_client
@@ -9,7 +10,8 @@ from utils import _load_secrets
 
 PG, CH = _load_secrets()  # ← credentials ready for use
 
-def get_pg_connection(real_dict = True) -> psycopg2.extensions.connection:
+
+def get_pg_connection(real_dict=True) -> psycopg2.extensions.connection:
     """Return a connection to PostgreSQL."""
     pg_cfg = {
         "host": PG["host"],
@@ -18,7 +20,7 @@ def get_pg_connection(real_dict = True) -> psycopg2.extensions.connection:
         "password": PG["password"],
         "database": PG["database"],
     }
-    conn =  psycopg2.connect(**pg_cfg, cursor_factory=psycopg2.extras.DictCursor)
+    conn = psycopg2.connect(**pg_cfg, cursor_factory=psycopg2.extras.DictCursor)
 
     if real_dict:
         conn.cursor_factory = psycopg2.extras.RealDictCursor
@@ -36,6 +38,7 @@ def get_ch_connection() -> Client:
         database=CH["database"],
         secure=CH["secure"],
     )
+
 
 def _check_pg() -> None:
     """Connectivity + logical-replication prerequisites."""
@@ -101,6 +104,48 @@ def _check_clickhouse() -> None:
     logging.info("✓ SELECT privilege on INFORMATION_SCHEMA verified")
 
     client.close()
+
+
+def _get_destination_table_name(table: str) -> str:
+    """Get the destination table name for the given source table name."""
+    return f"{CH['database']}___{table}"
+
+
+def get_last_created_at(pg_table: str) -> str | None:
+    ch_client = get_ch_connection()
+    destination = _get_destination_table_name(pg_table)
+
+    # Check if the destination table exists; if not, full initial load
+    exists_count = ch_client.query(
+        "SELECT count() as cnt FROM system.tables WHERE database = %s AND name = %s",
+        (CH['database'], destination)
+    ).first_item["cnt"]
+
+    if exists_count > 0:
+        # Get max(created_at) from ClickHouse (timezone preserved by driver)
+        try:
+            return ch_client.query(
+                f"SELECT MAX(created_at) as last FROM `{CH['database']}`.`{destination}`"
+            ).first_item["last"]
+        except Exception:
+            pass
+
+    ch_client.close()
+    return None
+
+
+def fetch_batched(query: str, params: tuple, batch_size: int = 4000):
+    with get_pg_connection() as conn:
+        # Batch fetching to limit memory footprint
+        with conn.cursor() as cur:
+            cur.itersize = batch_size
+            cur.execute(query, params)
+            while True:
+                batch = cur.fetchmany(batch_size)
+                if not batch:
+                    break
+                for row in batch:
+                    yield row
 
 
 def preflight() -> None:

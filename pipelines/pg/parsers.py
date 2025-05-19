@@ -11,8 +11,8 @@ def parse_inline(ad: dict, row: dict):
         "product_type": ad.get("productType"),
         "description": ad.get("description"),
         "booking_button_text": ad.get("bookingButtonText"),
-        "cpc_price": ad.get("cpcEstimate", "price"),
-        "cpc_currency": ad.get("cpcEstimate", "currency"),
+        "cpc_price": get(ad, "cpcEstimate", "price"),
+        "cpc_currency": get(ad, "cpcEstimate", "currency"),
     }
 
 
