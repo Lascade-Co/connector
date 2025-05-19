@@ -3,13 +3,14 @@ import psycopg2
 import psycopg2.extras
 from clickhouse_connect import get_client
 import dlt
+from clickhouse_connect.driver import Client
 
 from utils import _load_secrets
 
 PG, CH = _load_secrets()  # ← credentials ready for use
 
-def _check_pg() -> None:
-    """Connectivity + logical-replication prerequisites."""
+def get_pg_connection() -> psycopg2.extensions.connection:
+    """Return a connection to PostgreSQL."""
     pg_cfg = {
         "host": PG["host"],
         "port": PG["port"],
@@ -17,7 +18,26 @@ def _check_pg() -> None:
         "password": PG["password"],
         "database": PG["database"],
     }
-    with psycopg2.connect(**pg_cfg, cursor_factory=psycopg2.extras.DictCursor) as cx:
+    conn =  psycopg2.connect(**pg_cfg, cursor_factory=psycopg2.extras.DictCursor)
+    conn.cursor_factory = psycopg2.extras.RealDictCursor
+
+    return conn
+
+
+def get_ch_connection() -> Client:
+    """Return a connection to ClickHouse."""
+    return get_client(
+        host=CH["host"],
+        port=CH["http_port"],
+        username=CH["username"],
+        password=CH["password"],
+        database=CH["database"],
+        secure=CH["secure"],
+    )
+
+def _check_pg() -> None:
+    """Connectivity + logical-replication prerequisites."""
+    with get_pg_connection() as cx:
         cx.autocommit = True
         cur = cx.cursor()
 
@@ -46,14 +66,8 @@ def _check_pg() -> None:
 
 def _check_clickhouse() -> None:
     """Connectivity + INSERT privilege to ClickHouse."""
-    client = get_client(
-        host=CH["host"],
-        port=CH["http_port"],
-        username=CH["username"],
-        password=CH["password"],
-        database=CH["database"],
-        secure=CH["secure"],
-    )
+    client = get_ch_connection()
+
     client.query("SELECT 1")
     logging.info("✓ ClickHouse connectivity verified")
 
