@@ -7,32 +7,41 @@ from constants import SELECTED_TABLES
 from pipelines.pg.db_utils import get_pipeline, get_pg_connection, get_ch_connection, CH
 
 
-def get_destination_table_name(table_name: str) -> str:
+def get_destination_table_name(table: str) -> str:
     """Get the destination table name for the given source table name."""
-    return f"{CH['database']}___{table_name}"
+    return f"{CH['database']}___{table}"
 
 
 @dlt.resource(
     standalone=True,
-    name=get_destination_table_name,
+    name=lambda args: args['pg_table'],
     write_disposition="merge",
     merge_key="id",
     primary_key="id",
 )
-def stream_table(table_name: str):
+def stream_table(pg_table: str):
     ch_client = get_ch_connection()
-    destination = get_destination_table_name(table_name)
+    destination = get_destination_table_name(pg_table)
 
     # Check if the destination table exists; if not, full initial load
-    exists = ch_client.query(f"EXISTS TABLE {destination}").first_item
-    if exists:
+    exists_count = ch_client.query(
+        "SELECT count() as cnt FROM system.tables WHERE database = %s AND name = %s",
+        (CH['database'], destination)
+    ).first_item["cnt"]
+
+    last_created_at = None
+
+    if exists_count > 0:
         # Get max(created_at) from ClickHouse (timezone preserved by driver)
-        last_created_at = ch_client.query(f"SELECT MAX(created_at) FROM {destination}").first_item
-    else:
-        last_created_at = None
+        try:
+            last_created_at = ch_client.query(
+                f"SELECT MAX(created_at) as last FROM `{CH['database']}`.`{destination}`"
+            ).first_item["last"]
+        except Exception:
+            pass
 
     # Build source query with parameterized timestamp filter
-    sql = f"SELECT * FROM {table_name}"
+    sql = f"SELECT * FROM {pg_table}"
     params = ()
     if last_created_at:
         sql += " WHERE created_at > %s"
@@ -41,32 +50,33 @@ def stream_table(table_name: str):
     with get_pg_connection() as conn:
         # Batch fetching to limit memory footprint
         with conn.cursor() as cur:
-            cur.itersize = 1000
+            cur.itersize = 2000
             cur.execute(sql, params)
-            row_count = 0
             while True:
                 batch = cur.fetchmany(1000)
                 if not batch:
                     break
                 for row in batch:
                     yield row
-                    row_count += 1
-
-    # Log per-table row count
-    logging.info(f"Streamed {row_count} rows from {table_name}")
 
 
 def run() -> None:
     logging.info("Common tables pipeline started")
     pipe = get_pipeline("pg_to_click")
 
-    streams = [stream_table(table_name=tbl) for tbl in SELECTED_TABLES]
+    streams = [stream_table(pg_table=tbl) for tbl in SELECTED_TABLES]
     pipe.run(streams)
 
     logging.info("Run finished")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s │ %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+
     try:
         run()
     except SystemExit as exc:
