@@ -9,7 +9,7 @@ from utils import _load_secrets
 
 PG, CH = _load_secrets()  # ← credentials ready for use
 
-def get_pg_connection() -> psycopg2.extensions.connection:
+def get_pg_connection(real_dict = True) -> psycopg2.extensions.connection:
     """Return a connection to PostgreSQL."""
     pg_cfg = {
         "host": PG["host"],
@@ -19,7 +19,9 @@ def get_pg_connection() -> psycopg2.extensions.connection:
         "database": PG["database"],
     }
     conn =  psycopg2.connect(**pg_cfg, cursor_factory=psycopg2.extras.DictCursor)
-    conn.cursor_factory = psycopg2.extras.RealDictCursor
+
+    if real_dict:
+        conn.cursor_factory = psycopg2.extras.RealDictCursor
 
     return conn
 
@@ -37,7 +39,7 @@ def get_ch_connection() -> Client:
 
 def _check_pg() -> None:
     """Connectivity + logical-replication prerequisites."""
-    with get_pg_connection() as cx:
+    with get_pg_connection(False) as cx:
         cx.autocommit = True
         cur = cx.cursor()
 
