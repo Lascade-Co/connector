@@ -50,7 +50,7 @@ def stream_table(pg_table: str):
     with get_pg_connection() as conn:
         # Batch fetching to limit memory footprint
         with conn.cursor() as cur:
-            cur.itersize = 2000
+            cur.itersize = 4000
             cur.execute(sql, params)
             while True:
                 batch = cur.fetchmany(1000)
