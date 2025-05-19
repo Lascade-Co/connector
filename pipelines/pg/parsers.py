@@ -11,7 +11,8 @@ def parse_inline(ad: dict, row: dict):
         "product_type": ad.get("productType"),
         "description": ad.get("description"),
         "booking_button_text": ad.get("bookingButtonText"),
-        "cpc": ad.get("cpcEstimate"),
+        "cpc_price": ad.get("cpcEstimate", "price"),
+        "cpc_currency": ad.get("cpcEstimate", "currency"),
     }
 
 
@@ -21,8 +22,8 @@ def inline_ad(row, origin_date, destination_date, origin, destination):
             **parse_inline(ad, row),
             "start_date": origin_date,
             "end_date": destination_date,
-            "origin": origin,
-            "destination": destination,
+            "origin": str(origin),
+            "destination": str(destination),
             "os": get(row, "data", "kwargs", "os"),
             "country": get(row, "data", "kwargs", "country"),
             "created_at": row["created_at"],
