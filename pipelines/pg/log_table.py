@@ -5,6 +5,7 @@ import dlt
 from constants import LOG_TABLE
 from pipelines.pg.db_utils import get_pipeline, get_last_created_at, fetch_batched
 from pipelines.pg.parsers import legacy_inline_ad, car_ads, flight_ads, hotel_ads
+from utils import setup_logging
 
 DESTINATION = "inline_ad_logs"
 
@@ -53,9 +54,5 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s │ %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)]
-    )
+    setup_logging()
     run()

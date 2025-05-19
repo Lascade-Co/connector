@@ -5,12 +5,7 @@ import time
 import schedule
 
 from pipelines import pg
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s │ %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+from utils import setup_logging
 
 
 def safe_pg_pipeline():
@@ -31,10 +26,12 @@ def run():
 
 
 if __name__ == "__main__":
+    setup_logging()
+
     if len(sys.argv) > 1 and sys.argv[1] == "schedule":
         # Run the pipeline immediately
         logging.info("Running pipeline immediately...")
         run()
     else:
         logging.info("Starting pipelines...")
-        safe_pg_pipeline()
+        pg.run()

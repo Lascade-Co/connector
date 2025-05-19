@@ -1,4 +1,6 @@
+import logging
 import os
+import sys
 from pathlib import Path
 from typing import Dict, Any
 import tomllib as toml
@@ -52,3 +54,14 @@ def get(dictionary: Dict[str, Any], *keys: str | int, default: Any = None) -> An
         except (KeyError, TypeError, IndexError):
             return default
     return dictionary
+
+
+def setup_logging():
+    """
+    Set up logging for the pipeline.
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s │ %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )

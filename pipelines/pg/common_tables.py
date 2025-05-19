@@ -5,6 +5,7 @@ import dlt
 
 from constants import SELECTED_TABLES
 from pipelines.pg.db_utils import get_pipeline, get_last_created_at, fetch_batched
+from utils import setup_logging
 
 
 @dlt.resource(
@@ -38,17 +39,5 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s │ %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)]
-    )
-
-    try:
-        run()
-    except SystemExit as exc:
-        logging.error("❌ %s", exc)
-        sys.exit(1)
-    except Exception as e:
-        logging.exception(f"Unhandled pipeline error {e}", exc_info=True)
-        sys.exit(2)
+    setup_logging()
+    run()
