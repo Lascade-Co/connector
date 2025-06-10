@@ -16,10 +16,12 @@ def parse_inline(ad: dict, row: dict):
     }
 
 
-def inline_ad(row, origin_date, destination_date, origin, destination):
+def inline_ad(row, origin_date, destination_date, origin, destination, cabin_class, travelers):
     for ad in get(row, "data", "kwargs", "inlineItems", default=[]):
         yield {
             **parse_inline(ad, row),
+            "cabin_class": cabin_class,
+            "travelers": travelers,
             "start_date": origin_date,
             "end_date": destination_date,
             "origin": str(origin),
@@ -39,7 +41,7 @@ def car_ads(row: dict):
     origin = get(params, "pickUpLocation", "locationQuery")
     destination = get(params, "dropOffLocation", "locationQuery")
 
-    return inline_ad(row, origin_date, destination_date, origin, destination)
+    return inline_ad(row, origin_date, destination_date, origin, destination, None, None)
 
 
 def flight_ads(row: dict):
@@ -49,8 +51,10 @@ def flight_ads(row: dict):
     origin_date = get(leg, "date")
     origin = get(leg, "originAirport")
     destination = get(leg, "destinationAirport")
+    cabin_class = get(params, "cabin")
+    passengers = len(get(params, "passengers", default=[1]))
 
-    return inline_ad(row, origin_date, origin_date, origin, destination)
+    return inline_ad(row, origin_date, origin_date, origin, destination, cabin_class, passengers)
 
 
 def hotel_ads(row: dict):
@@ -59,8 +63,9 @@ def hotel_ads(row: dict):
     check_in_date = get(params, "checkinDate")
     check_out_date = get(params, "checkoutDate")
     origin = get(params, "cityId")
+    adults = get(params, "adults")
 
-    return inline_ad(row, check_in_date, check_out_date, origin, origin)
+    return inline_ad(row, check_in_date, check_out_date, origin, origin, None, adults)
 
 
 def legacy_inline_ad(row: dict):
@@ -85,6 +90,12 @@ def legacy_inline_ad(row: dict):
     origin = get(params, "pickUpLocation", "locationQuery", default=origin)
     destination = get(params, "dropOffLocation", "locationQuery", default=destination)
 
+    occupants = get(params, "adults")
+    passengers = get(params, "passengers", default=[1])
+    travelers = occupants if occupants else len(passengers)
+
+    cabin_class = get(params, "cabinClass")
+
     for ad in get(row, "data", "response", "inlineItems", default=[]):
         yield {
             **parse_inline(ad, row),
@@ -96,4 +107,6 @@ def legacy_inline_ad(row: dict):
             "destination": destination,
             "created_at": row["created_at"],
             "version": 1.0,
+            "cabin_class": cabin_class,
+            "travelers": travelers,
         }
