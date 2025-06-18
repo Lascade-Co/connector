@@ -6,7 +6,8 @@ SELECTED_TABLES = [
     "users_deviceuser",
     "users_provider",
     "users_providerservice",
-    "users_usersession"
+    "users_usersession",
+    "users_attribution",
 ]
 
 LOG_TABLE = "server_logs_log"
