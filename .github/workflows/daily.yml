@@ -1,0 +1,39 @@
+name: FB‑Ads‑ETL‑Matrix
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 1 * * *"          # every day 01:10UTC
+jobs:
+  etl:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        group: [d1, m4]
+      fail-fast: false            # one group failing won’t cancel the rest
+
+    env:
+      FB_GROUPS: ${{ secrets.FB_GROUPS }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Setu Secrets
+        run: | 
+          echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
+          echo "${{ secrets.FB_GROUPS }}" | base64 --decode > fb_accounts.json
+
+      # Run only the subset for the current matrix entry
+      - name: Run pipeline for ${{ matrix.group }}
+        run: |
+          python main.py daily '${{ matrix.group }}'

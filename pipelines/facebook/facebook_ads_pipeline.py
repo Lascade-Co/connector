@@ -24,7 +24,6 @@ def run():
         destination="clickhouse",
         dataset_name="facebook_ads",  # <- *shared* final schema
         staging_dataset_name_layout="{dataset}__{pipeline}",
-        # avoids staging clashes :contentReference[oaicite:0]{index=0}
     )
 
     pipeline.run([source(accounts) for source in all_sources])
