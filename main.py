@@ -1,37 +1,22 @@
 import logging
 import sys
-import time
-
-import schedule
 
 from pipelines import pg
+from pipelines.facebook import facebook_ads_pipeline
 from utils import setup_logging
 
 
-def safe_pg_pipeline():
-    """Run the pg_replication_pipeline safely."""
-    # noinspection PyBroadException
-    try:
-        pg.run()
-    except Exception:
-        logging.exception(f"Error in pg_replication_pipeline", exc_info=True)
-
-
-def run():
-    schedule.every(1).hours.do(safe_pg_pipeline)
-
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
+def daily():
+    logging.info("Running daily pipelines...")
+    facebook_ads_pipeline.run()
 
 
 if __name__ == "__main__":
     setup_logging()
 
-    if len(sys.argv) > 1 and sys.argv[1] == "schedule":
+    if len(sys.argv) > 1 and sys.argv[1] == "daily":
         # Run the pipeline immediately
-        logging.info("Running pipeline immediately...")
-        run()
+        daily()
     else:
         logging.info("Starting pipelines...")
         pg.run()
