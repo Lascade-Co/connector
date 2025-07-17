@@ -2,8 +2,6 @@ import json, sys, dlt
 import logging
 
 from pipelines.facebook.sources import all_sources
-from utils import _load_secrets
-
 
 def get_accounts(group_name):
     GROUPS = {g["name"]: g for g in json.load(open("fb_accounts.json", "r"))}
