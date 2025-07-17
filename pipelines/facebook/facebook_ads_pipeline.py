@@ -19,7 +19,6 @@ def run():
 
     group_name = sys.argv[2]
     accounts = get_accounts(group_name)
-    CH = _load_secrets()[1]
 
     logging.info(f"Running Facebook Ads pipeline for group: {group_name}")
     logging.info(f"Pulling accounts: {', '.join(a['account_id'] for a in accounts)}")
@@ -27,7 +26,7 @@ def run():
     pipeline = dlt.pipeline(
         pipeline_name=f"fb_ads_{group_name}",  # <- each group has its *own* state dir
         destination="clickhouse",
-        dataset_name=CH["database"]
+        dataset_name="fb"
     )
 
     pipeline.run([source(accounts) for source in all_sources])
