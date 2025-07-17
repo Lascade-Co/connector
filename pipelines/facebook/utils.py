@@ -11,6 +11,3 @@ def insights_src(cred):  # metrics
         access_token=cred["token"],
         attribution_window_days_lag=7
     )
-
-
-all_sources = [ads_src, insights_src]

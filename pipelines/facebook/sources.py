@@ -20,3 +20,6 @@ def insights_all(accounts):
         for r in insights_src(cred).facebook_insights:
             r["account_id"] = cred["account_id"]
             yield r
+
+
+all_sources = [ads_all, insights_all]

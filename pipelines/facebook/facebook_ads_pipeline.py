@@ -1,7 +1,7 @@
 import json, os, sys, dlt
 import logging
 
-from pipelines.facebook.utils import all_sources
+from pipelines.facebook.sources import all_sources
 
 
 def get_accounts(group_name):
