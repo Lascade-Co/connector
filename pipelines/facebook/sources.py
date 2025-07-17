@@ -1,5 +1,5 @@
 import dlt
-from pipelines.facebook.utils import ads_src, insights_src
+from pipelines.facebook.raw_sources import ads_src, insights_src
 
 # ---------------------------------------------------------------------------
 # STRUCTURAL OBJECTS
