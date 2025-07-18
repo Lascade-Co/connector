@@ -27,6 +27,6 @@ def run():
         dataset_name="fb"
     )
 
-    pipeline.run([source(accounts) for source in all_sources])
+    pipeline.run([source(accounts, group_name) for source in all_sources])
 
     logging.info("Facebook Ads pipeline completed successfully.")
