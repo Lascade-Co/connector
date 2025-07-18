@@ -12,3 +12,4 @@ protobuf~=6.30.2
 facebook_business~=22.0.4
 
 facebook_business~=22.0.4
+google-ads~=27.0.0
