@@ -9,7 +9,7 @@ jobs:
 
     strategy:
       matrix:
-        group: [d1, m4]
+        group: [d1, m4, d2]
       fail-fast: false            # one group failing won’t cancel the rest
 
     env:
