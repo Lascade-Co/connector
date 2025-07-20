@@ -9,12 +9,17 @@ from pipelines.google.queries import AD_METRICS_QUERY, run_query, CREATIVES_QUER
 
 ROLLING_DAYS = 30
 
+
 @dlt.resource(
     name="google_ads",  # final table name
     primary_key=["account_id", "ad_id", "date"],
     write_disposition="merge",
 )
-def ads_metrics(client: GoogleAdsClient, customer_ids: List[str], days_back: int = ROLLING_DAYS) -> Iterator[TDataItem]:
+def ads_metrics(
+        client: GoogleAdsClient,
+        customer_ids: List[str],
+        group_name: str, days_back: int = ROLLING_DAYS
+) -> Iterator[TDataItem]:
     end = datetime.date.today()
     start = end - datetime.timedelta(days=days_back)
     query = AD_METRICS_QUERY.format(start=start, end=end)
@@ -25,6 +30,7 @@ def ads_metrics(client: GoogleAdsClient, customer_ids: List[str], days_back: int
             yield {
                 "date": r.segments.date.value,
                 "account_id": customer_id,
+                "managing_system": group_name,
                 "campaign_id": r.campaign.id,
                 "campaign_name": r.campaign.name,
                 "ad_group_id": r.ad_group.id,
@@ -51,12 +57,14 @@ def ads_metrics(client: GoogleAdsClient, customer_ids: List[str], days_back: int
 def creatives(
         client: GoogleAdsClient,
         accounts: List[str],
+        group_name: str
 ) -> Iterator[TDataItem]:
     for acc in accounts:
         for r in run_query(client, acc, CREATIVES_QUERY):
             ad = r.ad_group_ad.ad
             yield {
                 "account_id": acc,
+                "managing_system": group_name,
                 "ad_id": ad.id,
                 "ad_name": ad.name,
                 "ad_type": ad.type.name,

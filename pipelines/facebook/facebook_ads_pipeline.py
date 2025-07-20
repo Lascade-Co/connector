@@ -1,14 +1,8 @@
-import json, sys, dlt
+import sys, dlt
 import logging
 
 from pipelines.facebook.sources import all_sources
-
-def get_accounts(group_name):
-    GROUPS = {g["name"]: g for g in json.load(open("fb_accounts.json", "r"))}
-    group = GROUPS[group_name]
-
-    # accounts → list of {"account_id": "...", "token": "..."}
-    return [{"account_id": str(aid), "token": group["token"]} for aid in group["account_ids"]]
+from utils import get_for_group
 
 
 def run():
@@ -16,10 +10,10 @@ def run():
         raise ValueError("Please provide a group name as the second argument.")
 
     group_name = sys.argv[2]
-    accounts = get_accounts(group_name)
+    group, accounts = get_for_group(group_name, "facebook")
 
     logging.info(f"Running Facebook Ads pipeline for group: {group_name}")
-    logging.info(f"Pulling accounts: {', '.join(a['account_id'] for a in accounts)}")
+    logging.info(f"Pulling accounts: {', '.join(accounts)}")
 
     pipeline = dlt.pipeline(
         pipeline_name=f"fb_ads_{group_name}",  # <- each group has its *own* state dir
@@ -27,6 +21,8 @@ def run():
         dataset_name="fb"
     )
 
-    pipeline.run([source(accounts, group_name) for source in all_sources])
+    creds = [{"account_id": acc, "token": group["token"]} for acc in accounts]
+
+    pipeline.run([source(creds, group_name) for source in all_sources])
 
     logging.info("Facebook Ads pipeline completed successfully.")

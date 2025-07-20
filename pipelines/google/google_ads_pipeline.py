@@ -1,3 +1,5 @@
+import logging
+
 import dlt
 import sys
 
@@ -15,6 +17,9 @@ def run():
     group_name = sys.argv[2]
     group, accounts = get_for_group(group_name, "google")
 
+    logging.info(f"Running Google Ads pipeline for group: {group_name}")
+    logging.info(f"Pulling accounts: {', '.join(accounts)}")
+
     client = get_client(
         GcpOAuthCredentials(
             client_id=group["client_id"],
@@ -30,4 +35,4 @@ def run():
         destination="clickhouse",
         dataset_name="google",
     )
-    pipe.run([source(client, accounts) for source in all_sources])
+    pipe.run([source(client, accounts, group_name) for source in all_sources])
