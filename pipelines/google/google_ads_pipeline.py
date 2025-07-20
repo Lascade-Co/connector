@@ -1,5 +1,4 @@
-import json
-import os, datetime, dlt
+import datetime, dlt
 import sys
 
 from dlt.common.typing import TDataItem
@@ -9,10 +8,9 @@ from typing import Iterator, List
 
 from google_ads import get_client
 from pipelines.google.queries import AD_METRICS_QUERY, CREATIVES_QUERY
+from utils import get_for_group
 
 ROLLING_DAYS = 30
-
-# ---------- helpers ---------------------------------------------------------
 
 def run_query(
         client: GoogleAdsClient,
@@ -25,10 +23,11 @@ def run_query(
         for row in batch.results:
             yield row
 
+
 # ---------- dlt resources ---------------------------------------------------
 
 @dlt.resource(
-    name="google_ads",                       # final table name
+    name="google_ads",  # final table name
     primary_key=["account_id", "ad_id", "date"],
     write_disposition="merge",
 )
@@ -81,27 +80,30 @@ def creatives(
                 "final_urls": list(ad.final_urls),
             }
 
+
 def run():
     if len(sys.argv) < 2 or not sys.argv[2]:
         raise ValueError("Please provide a group name as the second argument.")
 
     group_name = sys.argv[2]
-    group = json.load(open("google_accounts.json", "r"))[group_name]
+    group, accounts = get_for_group(group_name, "google")
 
     client = get_client(
         GcpOAuthCredentials(
-        client_id=os.getenv("GADS_CLIENT_ID_A"),
-        client_secret=os.getenv("GADS_CLIENT_SECRET_A"),
-        refresh_token=os.getenv("GADS_REFRESH_TOKEN_A"),
-        project_id="my-gcp-proj")
+            client_id=group["client_id"],
+            client_secret=group["client_secret"],
+            refresh_token=group["refresh_token"],
+            project_id=group["project_id"]),
+        "",
+        group["email"]
     )
 
     pipe = dlt.pipeline(
         pipeline_name=f"google_ads_{group_name}",
         destination="clickhouse",
-        dataset_name="google",               # -> tables google.google_ads / google.google_creatives
+        dataset_name="google",
     )
     pipe.run([
-        ads_metrics(client, dev_token),    # bound call!
-        creatives(client, dev_token),
+        ads_metrics(client, accounts),  # bound call!
+        creatives(client, accounts),
     ])
