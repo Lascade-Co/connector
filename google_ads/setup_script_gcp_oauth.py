@@ -23,6 +23,7 @@ def print_refresh_token() -> None:
     client_secret = input("Enter your GCP OAuth client secret: ").strip()
     project_id = input("Enter your GCP project ID: ").strip()
     email = input("Enter your email (used for GCP account): ").strip()
+    dev_token = input("Enter your Google Ads developer token: ").strip()
     customer_ids = input("Enter your Google Ads customer IDs (comma-separated): ").strip().split(",")
     refresh_token = input("Enter your GCP OAuth refresh token (leave empty to generate a new one): ").strip()
 
@@ -40,6 +41,7 @@ def print_refresh_token() -> None:
         "project_id": credentials.project_id,
         "refresh_token": credentials.refresh_token or refresh_token,
         "email": email,
+        "dev_token": dev_token,
         "accounts_ids": [int(customer_id.replace("-", "").strip()) for customer_id in customer_ids],
     }
     print("Config: ")
