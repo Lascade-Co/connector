@@ -111,7 +111,7 @@ def _get_destination_table_name(table: str) -> str:
     return f"{CH['database']}___{table}"
 
 
-def get_last_created_at(pg_table: str) -> str | None:
+def _get_last_for_column(pg_table: str, column: str) -> str | None:
     ch_client = get_ch_connection()
     destination = _get_destination_table_name(pg_table)
 
@@ -125,13 +125,21 @@ def get_last_created_at(pg_table: str) -> str | None:
         # Get max(created_at) from ClickHouse (timezone preserved by driver)
         try:
             return ch_client.query(
-                f"SELECT MAX(created_at) as last FROM `{CH['database']}`.`{destination}`"
+                f"SELECT MAX({column}) as last FROM `{CH['database']}`.`{destination}`"
             ).first_item["last"]
         except Exception:
             pass
 
     ch_client.close()
     return None
+
+
+def get_last_id(pg_table: str) -> str | None:
+    return _get_last_for_column(pg_table, "id")
+
+
+def get_last_created_at(pg_table: str) -> str | None:
+    return _get_last_for_column(pg_table, "created_at")
 
 
 def fetch_batched(query: str, params: tuple, batch_size: int = 4000):

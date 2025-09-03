@@ -3,7 +3,7 @@ import logging
 import dlt
 
 from constants import SELECTED_TABLES
-from pipelines.pg.db_utils import get_pipeline, get_last_created_at, fetch_batched
+from pipelines.pg.db_utils import get_pipeline, fetch_batched, get_last_id
 from utils import setup_logging
 
 
@@ -18,11 +18,11 @@ def stream_table(pg_table: str):
     # Build source query with parameterized timestamp filter
     sql = f"SELECT * FROM {pg_table}"
     params = ()
-    last_created_at = get_last_created_at(pg_table)
+    last_id = get_last_id(pg_table)
 
-    if last_created_at:
-        sql += " WHERE created_at > %s"
-        params = (last_created_at,)
+    if last_id:
+        sql += " WHERE id > %s"
+        params = (last_id,)
 
     yield from fetch_batched(sql, params)
 
