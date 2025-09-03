@@ -35,4 +35,4 @@ def run():
         destination="clickhouse",
         dataset_name="google",
     )
-    pipe.run([source(client, accounts, group_name) for source in all_sources])
+    pipe.run([source(client, group_name) for source in all_sources])
