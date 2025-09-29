@@ -1,4 +1,4 @@
-name: FB‑Ads‑ETL‑Matrix
+name: FB-Ads-ETL-Matrix
 on:
   workflow_dispatch:
   schedule:
@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Setu Secrets
+      - name: Setup Secrets
         run: | 
           echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
           echo "${{ secrets.FB_GROUPS }}" | base64 --decode > fb_accounts.json
@@ -36,4 +36,4 @@ jobs:
       # Run only the subset for the current matrix entry
       - name: Run pipeline for ${{ matrix.group }}
         run: |
-          python main.py daily 'facebook' '${{ matrix.group }}'
+          python main.py 'facebook' '${{ matrix.group }}'
