@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Dict, Any, Literal, List
-import tomllib as toml
+import tomllib as toml # noqa
 
 def _load_secrets(path: Path | None = None) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """
@@ -60,7 +60,7 @@ def get_for_group(group: str, platform: Literal["facebook", "google"]) -> tuple[
     if group not in data:
         raise SystemExit(f"Group '{group}' not found in {platform} secrets file.")
 
-    accounts_ids = data[group]["accounts_ids"]
+    accounts_ids = data[group]["account_ids"]
 
     return data[group], [str(aid) for aid in accounts_ids]
 

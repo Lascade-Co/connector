@@ -22,7 +22,7 @@ def run():
     )
 
     creds = [{"account_id": acc, "token": group["token"]} for acc in accounts]
-
+    # pipeline.run([all_sources[4](creds, group_name)]) # for insights only in local dev
     pipeline.run([source(creds, group_name) for source in all_sources])
 
     logging.info("Facebook Ads pipeline completed successfully.")
