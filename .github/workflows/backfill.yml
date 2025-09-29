@@ -4,20 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       group:
-        description: "Facebook series/group (e.g., d1, m4, d2)"
+        description: "Facebook series/group (e.g., d1, m4, d2, or all)"
         type: choice
         required: true
         options:
           - d1
           - m4
           - d2
+          - all
       days:
         description: "How many past days to backfill (e.g., 120)"
         type: string
         required: true
 
 jobs:
-  backfill:
+  # Single group backfill
+  backfill_one:
+    if: ${{ inputs.group != 'all' }}
     runs-on: ubuntu-latest
 
     # Pass parameters into env vars consumed by the code
@@ -51,3 +54,40 @@ jobs:
       - name: Run manual backfill for ${{ inputs.group }}
         run: |
           python main.py 'facebook' '${{ inputs.group }}'
+
+  # All groups backfill in parallel
+  backfill_all:
+    if: ${{ inputs.group == 'all' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        group: [d1, m4, d2]
+      fail-fast: false
+
+    env:
+      FB_GROUPS: ${{ secrets.FB_GROUPS }}
+      FB_BACKFILL_DAYS: ${{ inputs.days }}
+      PIPELINE_NAME_SUFFIX: _backfill_${{ matrix.group }}_${{ github.run_id }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Setup Secrets
+        run: |
+          mkdir -p secrets
+          echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
+          echo "${{ secrets.FB_GROUPS }}" | base64 --decode > secrets/facebook.json
+
+      - name: Run manual backfill for ${{ matrix.group }}
+        run: |
+          python main.py 'facebook' '${{ matrix.group }}'
