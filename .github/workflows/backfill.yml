@@ -1,0 +1,53 @@
+name: FB-Ads-Manual-Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      group:
+        description: "Facebook series/group (e.g., d1, m4, d2)"
+        type: choice
+        required: true
+        options:
+          - d1
+          - m4
+          - d2
+      days:
+        description: "How many past days to backfill (e.g., 120)"
+        type: string
+        required: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+
+    # Pass parameters into env vars consumed by the code
+    env:
+      # Used by setup step to materialize secrets
+      FB_GROUPS: ${{ secrets.FB_GROUPS }}
+      # Controls insights initial window in code at pipelines/facebook/raw_sources.py
+      FB_BACKFILL_DAYS: ${{ inputs.days }}
+      # Ensures a unique dlt state directory so backfill doesn't reuse prior state
+      PIPELINE_NAME_SUFFIX: _backfill_${{ inputs.group }}_${{ github.run_id }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Setup Secrets
+        run: |
+          mkdir -p secrets
+          echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
+          echo "${{ secrets.FB_GROUPS }}" | base64 --decode > secrets/facebook.json
+
+      - name: Run manual backfill for ${{ inputs.group }}
+        run: |
+          python main.py 'facebook' '${{ inputs.group }}'
