@@ -30,8 +30,9 @@ jobs:
 
       - name: Setu Secrets
         run: | 
+          mkdir -p secrets
           echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
-          echo "${{ secrets.FB_GROUPS }}" | base64 --decode > fb_accounts.json
+          echo "${{ secrets.FB_GROUPS }}" | base64 --decode > secrets/facebook.json
 
       # Run only the subset for the current matrix entry
       - name: Run pipeline for ${{ matrix.group }}
