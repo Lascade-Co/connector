@@ -35,4 +35,8 @@ def run():
         destination="clickhouse",
         dataset_name="google",
     )
-    pipe.run([source(client, group_name) for source in all_sources])
+    sources = []
+    for customer_id in accounts:
+        for source_func in all_sources:
+            sources.append(source_func(client=client, customer_id=customer_id, group_name=group_name))
+    pipe.run(sources)

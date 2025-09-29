@@ -84,10 +84,8 @@ from .settings import (
 
 def _first_numeric(value: Any) -> Optional[float]:
     try:
-        if value is None:
-            return None
         return float(value)
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 
@@ -196,8 +194,8 @@ def enrich_ad_objects(fb_obj_type: AbstractObject, fields: Sequence[str]) -> Any
     """Returns a transformation that will enrich any of the resources returned by `` with additional fields
 
     In example below we add "thumbnail_url" to all objects loaded by `ad_creatives` resource:
-    ```fb_ads = facebook_ads_source()```
-    ```fb_ads.ad_creatives.add_step(enrich_ad_objects(AdCreative, ["thumbnail_url"]))```
+    >>> fb_ads = facebook_ads_source()
+    >>> fb_ads.ad_creatives.add_step(enrich_ad_objects(AdCreative, ["thumbnail_url"]))
 
     Internally, the method uses batch API to get data efficiently. Refer to demo script for full examples
 
