@@ -76,9 +76,14 @@ DEFAULT_LEAD_FIELDS = (
 )
 
 DEFAULT_INSIGHT_FIELDS = (
+    "account_id",
+    "account_name",
     "campaign_id",
+    "campaign_name",
     "adset_id",
+    "adset_name",
     "ad_id",
+    "ad_name",
     "date_start",
     "date_stop",
     "reach",
@@ -94,8 +99,10 @@ DEFAULT_INSIGHT_FIELDS = (
     "spend",
     "actions",
     "action_values",
-    "cost_per_action_type",
     "website_ctr",
+    "cost_per_action_type",
+    "cost_per_result",
+    "purchase_roas",
 )
 
 TInsightsLevels = Literal["account", "campaign", "adset", "ad"]
@@ -158,9 +165,14 @@ INSIGHTS_BREAKDOWNS_OPTIONS: Dict[TInsightsBreakdownOptions, Any] = {
 }
 
 INSIGHT_FIELDS_TYPES: TTableSchemaColumns = {
+    "account_id": {"data_type": "bigint"},
+    "account_name": {"data_type": "text"},
     "campaign_id": {"data_type": "bigint"},
+    "campaign_name": {"data_type": "text"},
     "adset_id": {"data_type": "bigint"},
+    "adset_name": {"data_type": "text"},
     "ad_id": {"data_type": "bigint"},
+    "ad_name": {"data_type": "text"},
     "date_start": {"data_type": "timestamp"},
     "date_stop": {"data_type": "timestamp"},
     "reach": {"data_type": "bigint"},
@@ -174,6 +186,8 @@ INSIGHT_FIELDS_TYPES: TTableSchemaColumns = {
     "cpm": {"data_type": "decimal"},
     "cpp": {"data_type": "decimal"},
     "spend": {"data_type": "decimal"},
+    # Flattened scalar from complex list; ensure column exists in destination
+    "cost_per_result": {"data_type": "decimal"},
 }
 
 INVALID_INSIGHTS_FIELDS = [
@@ -190,3 +204,43 @@ INVALID_INSIGHTS_FIELDS = [
 ]
 
 FACEBOOK_INSIGHTS_RETENTION_PERIOD = 37  # months
+
+# ---------------------------------------------------------------------------
+# INSIGHTS FLATTENING CONFIGURATION
+# ---------------------------------------------------------------------------
+# Which action types we want to extract from complex list fields.
+# Keep this list focused to avoid excessive schema growth.
+SELECTED_ACTION_TYPES = (
+    "omni_app_install",
+    "search",
+    "omni_purchase",
+    "link_click",
+)
+
+SELECTED_ACTION_VALUE_TYPES = (
+    "omni_purchase",
+)
+
+# Per-metric selections
+SELECTED_WEBSITE_CTR_TYPES = (
+    # website_ctr
+    "link_click",
+)
+
+SELECTED_CPA_TYPES = (
+    # cost_per_action_type
+    "search",
+    "omni_purchase",
+    "link_click",
+    "omni_app_install",
+)
+
+SELECTED_PURCHASE_ROAS_TYPES = (
+    # purchase_roas
+    "omni_purchase",
+)
+
+# Prefixes used when expanding list-based metrics into scalar columns
+ACTIONS_PREFIX = "actions_"
+ACTION_VALUES_PREFIX = "action_values_"
+CPA_PREFIX = "cpa_"  # cost_per_action_type

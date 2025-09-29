@@ -3,19 +3,17 @@
 import functools
 import itertools
 import time
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Sequence, Dict, Optional
 
 import dlt
 import humanize
 import pendulum
-
 from dlt.common import logger
 from dlt.common.configuration.inject import with_config
 from dlt.common.time import ensure_pendulum_datetime
 from dlt.common.typing import DictStrAny, TDataItem, TDataItems
 from dlt.sources.helpers import requests
 from dlt.sources.helpers.requests import Client
-
 from facebook_business import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
 from facebook_business.adobjects.user import User
@@ -68,6 +66,111 @@ def process_report_item(item: AbstractObject) -> DictStrAny:
             d[pki] = "no_" + pki
 
     return d
+
+
+# ---------------------------------------------------------------------------
+# INSIGHTS FLATTENING
+# ---------------------------------------------------------------------------
+from .settings import (
+    SELECTED_ACTION_TYPES,
+    SELECTED_ACTION_VALUE_TYPES,
+    SELECTED_WEBSITE_CTR_TYPES,
+    SELECTED_CPA_TYPES,
+    SELECTED_PURCHASE_ROAS_TYPES,
+    ACTIONS_PREFIX,
+    ACTION_VALUES_PREFIX,
+    CPA_PREFIX,
+)
+
+def _first_numeric(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _expand_action_list(
+    item: DictStrAny,
+    field_name: str,
+    selected: Sequence[str],
+    prefix: str,
+    action_key: str = "action_type",
+    value_key: str = "value",
+) -> Sequence[str]:
+    """Expand a list-of-dicts action field into scalar columns for selected types.
+
+    Example input: item["actions"] = [{"action_type": "link_click", "value": "50"}, ...]
+    Resulting keys: actions_link_click=50.0
+    """
+    src = item.get(field_name)
+    if not isinstance(src, list):
+        return []
+
+    # Capture only the first occurrence for exact action_type matches
+    seen: Dict[str, float] = {}
+    selected_set = set(selected)
+    for e in src:
+        if not isinstance(e, dict):
+            continue
+        a = e.get(action_key)
+        if a not in selected_set or a in seen:
+            continue
+        num = _first_numeric(e.get(value_key))
+        if num is None:
+            continue
+        seen[a] = num
+
+    created: list[str] = []
+    for a, num in seen.items():
+        key = f"{prefix}{a}"
+        # do not overwrite if already present
+        if key not in item:
+            item[key] = num
+        created.append(key)
+
+    return created
+
+
+def _flatten_values_series(item: DictStrAny, field_name: str, out_key: str = None) -> Optional[str]:
+    """Flatten FB 'values' series fields into a single scalar using the first value.
+
+    Example shape:
+    [{"indicator": "...", "values": [{"value": "0.97", "attribution_windows": ["default"]}]}]
+    """
+    data = item.get(field_name)
+    if not (isinstance(data, list) and data):
+        return None
+    first = data[0]
+    values = first.get("values") if isinstance(first, dict) else None
+    if isinstance(values, list) and values:
+        val = values[0].get("value") if isinstance(values[0], dict) else None
+        num = _first_numeric(val)
+        if num is not None:
+            target = out_key or field_name
+            item[target] = num
+            # only remove the source if target differs
+            if target != field_name:
+                item.pop(field_name, None)
+            logger.info("flatten_facebook_insights: %s -> %s=%s", field_name, target, num)
+            return target
+    return None
+
+
+def flatten_facebook_insights(item: DictStrAny) -> DictStrAny:
+    """Map complex FB insights fields to flat scalar columns.
+
+    Only selected action types are expanded to avoid excessive schema growth.
+    """
+    # Action-type lists
+    _expand_action_list(item, "actions", SELECTED_ACTION_TYPES, ACTIONS_PREFIX)
+    _expand_action_list(item, "action_values", SELECTED_ACTION_VALUE_TYPES, ACTION_VALUES_PREFIX)
+    _expand_action_list(item, "cost_per_action_type", SELECTED_CPA_TYPES, CPA_PREFIX)
+    _expand_action_list(item, "website_ctr", SELECTED_WEBSITE_CTR_TYPES, "website_ctr_")
+    _expand_action_list(item, "purchase_roas", SELECTED_PURCHASE_ROAS_TYPES, "purchase_roas_")
+
+    # Other complex fields
+    _flatten_values_series(item, "cost_per_result")  # keep same key as scalar
+    return item
 
 
 def get_data_chunked(
