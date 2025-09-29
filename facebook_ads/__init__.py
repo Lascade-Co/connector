@@ -162,6 +162,7 @@ def facebook_insights_source(
     initial_load_start_date_str = initial_load_start_date.isoformat()
 
     @dlt.resource(
+        name=f"facebook_insights_{account_id}",
         primary_key=INSIGHTS_PRIMARY_KEY,
         write_disposition="merge",
         columns=INSIGHT_FIELDS_TYPES,
