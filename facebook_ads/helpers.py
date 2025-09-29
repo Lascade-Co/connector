@@ -30,7 +30,7 @@ from .utils import AbstractCrudObject, AbstractObject
 
 def get_start_date(
     incremental_start_date: dlt.sources.incremental[str],
-    attribution_window_days_lag: int = 365,
+    attribution_window_days_lag: int = 7,
 ) -> pendulum.DateTime:
     """
     Get the start date for incremental loading of Facebook Insights data.

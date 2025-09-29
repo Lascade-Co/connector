@@ -114,7 +114,7 @@ def facebook_ads_source(
 def facebook_insights_source(
     account_id: str = dlt.config.value,
     access_token: str = dlt.secrets.value,
-    initial_load_past_days: int = 30,
+    initial_load_past_days: int = 120,
     fields: Sequence[str] = DEFAULT_INSIGHT_FIELDS,
     attribution_window_days_lag: int = 7,
     time_increment_days: int = 1,

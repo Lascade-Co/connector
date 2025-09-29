@@ -16,7 +16,7 @@ def run():
     logging.info(f"Pulling accounts: {', '.join(accounts)}")
 
     pipeline = dlt.pipeline(
-        pipeline_name=f"fb_ads_{group_name}",  # <- each group has its *own* state dir
+        pipeline_name=f"fb_ads_{group_name}_backfill_1",  # <- each group has its *own* state dir
         destination="clickhouse",
         dataset_name="fb"
     )
