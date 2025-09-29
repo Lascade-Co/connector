@@ -36,4 +36,4 @@ jobs:
       # Run only the subset for the current matrix entry
       - name: Run pipeline for ${{ matrix.group }}
         run: |
-          python main.py daily '${{ matrix.group }}'
+          python main.py daily 'facebook' '${{ matrix.group }}'

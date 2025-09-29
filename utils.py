@@ -1,9 +1,10 @@
+import json
 import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Any
-import tomllib as toml
+from typing import Dict, Any, Literal, List
+import tomllib as toml # noqa
 
 def _load_secrets(path: Path | None = None) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """
@@ -41,6 +42,27 @@ def _load_secrets(path: Path | None = None) -> tuple[Dict[str, Any], Dict[str, A
     ch_cfg["secure"] = bool(ch_cfg.get("secure", 0))
 
     return pg_cfg, ch_cfg
+
+
+def get_for_group(group: str, platform: Literal["facebook", "google"]) -> tuple[Dict[str, str], List[str]]:
+    # check if secrets folder exists
+    if Path("secrets").exists():
+        secrets_path = Path("secrets") / f"{platform}.json"
+    else:
+        secrets_path = Path(f"{platform}.json")
+
+    if not secrets_path.exists():
+        raise SystemExit(f"Cannot find secrets file at {secrets_path!s}")
+
+    with secrets_path.open("r") as fh:
+        data = json.load(fh)
+
+    if group not in data:
+        raise SystemExit(f"Group '{group}' not found in {platform} secrets file.")
+
+    accounts_ids = data[group]["account_ids"]
+
+    return data[group], [str(aid) for aid in accounts_ids]
 
 
 def get(dictionary: Dict[str, Any], *keys: str | int, default: Any = None) -> Any:

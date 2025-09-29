@@ -2,14 +2,12 @@
 
 from typing import Iterator, Sequence
 
-from facebook_business import FacebookAdsApi
-from facebook_business.api import FacebookResponse
-
 import dlt
 from dlt.common import pendulum
-from dlt.common.typing import TDataItems, TDataItem, DictStrAny
+from dlt.common.typing import TDataItems
 from dlt.sources import DltResource
 
+from .helpers import flatten_facebook_insights
 from .helpers import (
     get_data_chunked,
     enrich_ad_objects,
@@ -18,16 +16,6 @@ from .helpers import (
     execute_job,
     get_ads_account,
 )
-from .utils import (
-    AbstractObject,
-    AbstractCrudObject,
-    Ad,
-    Campaign,
-    AdSet,
-    AdCreative,
-    Lead,
-)
-from .utils import debug_access_token, get_long_lived_token
 from .settings import (
     DEFAULT_AD_FIELDS,
     DEFAULT_ADCREATIVE_FIELDS,
@@ -48,6 +36,10 @@ from .settings import (
     INVALID_INSIGHTS_FIELDS,
     TInsightsLevels,
 )
+from .utils import (
+    Ad,
+)
+from .utils import debug_access_token, get_long_lived_token
 
 
 @dlt.source(name="facebook_ads")
@@ -63,7 +55,7 @@ def facebook_ads_source(
     All the resources have `replace` write disposition by default and define primary keys. Resources are parametrized and allow the user
     to change the set of fields that will be loaded from the API and the object statuses that will be loaded. See the demonstration script for details.
 
-    You can convert the source into merge resource to keep the deleted objects. Currently Marketing API does not return deleted objects. See the demo script.
+    You can convert the source into merge resource to keep the deleted objects. Currently, Marketing API does not return deleted objects. See the demo script.
 
     We also provide a transformation `enrich_ad_objects` that you can add to any of the resources to get additional data per object via `object.get_api`
 
@@ -145,9 +137,9 @@ def facebook_insights_source(
     Args:
         account_id: str = dlt.config.value,
         access_token: str = dlt.secrets.value,
-        initial_load_past_days (int, optional): How many past days (starting from today) to intially load. Defaults to 30.
-        fields (Sequence[str], optional): A list of fields to include in each reports. Note that `breakdowns` option adds fields automatically. Defaults to DEFAULT_INSIGHT_FIELDS.
-        attribution_window_days_lag (int, optional): Attribution window in days. The reports in attribution window are refreshed on each run.. Defaults to 7.
+        initial_load_past_days (int, optional): How many past days (starting from today) to initially load. Defaults to 30.
+        fields (Sequence[str], optional): A list of fields to include in each report. Note that `breakdowns` option adds fields automatically. Defaults to DEFAULT_INSIGHT_FIELDS.
+        attribution_window_days_lag (int, optional): Attribution window in days. The reports in attribution window are refreshed on each run. Defaults to 7.
         time_increment_days (int, optional): The report aggregation window in days. use 7 for weekly aggregation. Defaults to 1.
         breakdowns (TInsightsBreakdownOptions, optional): A presents with common aggregations. See settings.py for details. Defaults to "ads_insights_age_and_gender".
         action_breakdowns (Sequence[str], optional): Action aggregation types. See settings.py for details. Defaults to ALL_ACTION_BREAKDOWNS.
@@ -186,10 +178,10 @@ def facebook_insights_source(
         while start_date <= end_date:
             query = {
                 "level": level,
-                "action_breakdowns": list(action_breakdowns),
-                "breakdowns": list(
-                    INSIGHTS_BREAKDOWNS_OPTIONS[breakdowns]["breakdowns"]
-                ),
+                # "action_breakdowns": list(action_breakdowns),
+                # "breakdowns": list(
+                #     INSIGHTS_BREAKDOWNS_OPTIONS[breakdowns]["breakdowns"]
+                # ),
                 "limit": batch_size,
                 "fields": list(
                     set(fields)
@@ -208,7 +200,8 @@ def facebook_insights_source(
                 ],
             }
             job = execute_job(account.get_insights(params=query, is_async=True))
-            yield list(map(process_report_item, job.get_result()))
+            yield list(map(process_report_item, job.get_result())) # noqa
             start_date = start_date.add(days=time_increment_days)
 
-    return facebook_insights
+    # Attach a lightweight map to flatten complex array/object fields to scalar columns
+    return facebook_insights.add_map(flatten_facebook_insights, insert_at=1)
