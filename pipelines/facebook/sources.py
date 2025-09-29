@@ -51,7 +51,8 @@ def creatives_all(accounts, group_name: str):
 )
 def insights_all(accounts, group_name: str):
     for cred in accounts:
-        for r in insights_src(cred).facebook_insights:
+        # insights_src returns a single DltResource whose name is dynamic
+        for r in insights_src(cred):
             r["account_id"] = cred["account_id"]
             r["managing_system"] = group_name
             yield r
