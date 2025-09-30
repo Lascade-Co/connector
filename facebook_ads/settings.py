@@ -215,6 +215,9 @@ SELECTED_ACTION_TYPES = (
     "search",
     "omni_purchase",
     "link_click",
+    "omni_complete_registration",
+    "omni_initiated_checkout",
+    "omni_activate_app"
 )
 
 SELECTED_ACTION_VALUE_TYPES = (
