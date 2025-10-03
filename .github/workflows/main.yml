@@ -1,4 +1,4 @@
-name: Run main.py every hour
+name: Run main.py every half hour
 
 on:
   schedule:
