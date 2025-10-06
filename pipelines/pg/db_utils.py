@@ -5,7 +5,7 @@ import psycopg2.extras
 from clickhouse_connect import get_client
 import dlt
 from clickhouse_connect.driver import Client
-
+from constants import TABLE_TO_FIELD_MAPPING
 from utils import _load_secrets
 
 PG, CH = _load_secrets()  # ← credentials ready for use
@@ -140,6 +140,11 @@ def get_last_id(pg_table: str) -> str | None:
 
 def get_last_created_at(pg_table: str) -> str | None:
     return _get_last_for_column(pg_table, "created_at")
+
+
+def get_last_record_info(pg_table: str) -> tuple[str, str | None]:
+    column_name = TABLE_TO_FIELD_MAPPING.get(pg_table, "id")
+    return column_name, _get_last_for_column(pg_table, column_name)
 
 
 def fetch_batched(query: str, params: tuple, batch_size: int = 4000):
