@@ -21,9 +21,8 @@ def stream_table(pg_table: str):
     column_name, last_value = get_last_record_info(pg_table)
 
     if column_name and last_value:
-        sql += " WHERE %s > %s"
-        params += (column_name, last_value)
-
+        sql += f' WHERE "{column_name}" > %s'
+        params += (last_value,)
     yield from fetch_batched(sql, params)
 
 
