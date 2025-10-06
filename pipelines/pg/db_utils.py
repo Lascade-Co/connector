@@ -142,7 +142,7 @@ def get_last_created_at(pg_table: str) -> str | None:
     return _get_last_for_column(pg_table, "created_at")
 
 
-def get_last_record_info(pg_table: str) -> tuple[str, str] | None:
+def get_last_record_info(pg_table: str) -> tuple[str, str | None]:
     column_name = TABLE_TO_FIELD_MAPPING.get(pg_table, "id")
     return column_name, _get_last_for_column(pg_table, column_name)
 
