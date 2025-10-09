@@ -27,7 +27,7 @@ def ads_metrics(
     for r in run_query(client, customer_id, query):
         m = r.metrics
         yield {
-            "date": r.segments.date.value,
+            "date": r.segments.date,
             "account_id": r.customer.id,
             "managing_system": group_name,
             "campaign_id": r.campaign.id,
@@ -40,11 +40,11 @@ def ads_metrics(
             "clicks": m.clicks,
             "ctr": m.ctr,
             "average_cpc": m.average_cpc,
-            "cpm": m.cost_per_thousand_impressions,
+            "average_cpm": m.average_cpm,
             "spend_micros": m.cost_micros,
-            "conversion_value": m.conversions_value,
-            "roas": m.conversions_value_per_cost,
-            "reach": m.reach,
+            "conversion_value": m.conversions_value_by_conversion_date,
+            "conversions": m.conversions_by_conversion_date,
+            "video_views": m.video_views,
         }
 
 
