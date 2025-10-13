@@ -27,7 +27,8 @@ def run():
             refresh_token=group["refresh_token"],
             project_id=group["project_id"]),
         group["dev_token"],
-        group["email"]
+        group["email"],
+        group["login_customer_id"]
     )
 
     pipe = dlt.pipeline(

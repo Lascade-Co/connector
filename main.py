@@ -16,4 +16,4 @@ if __name__ == "__main__":
         facebook_ads_pipeline.run()
     elif sys.argv[1] == "google":
         logging.info("doing nothing for now")
-        # google_ads_pipeline.run()
+        google_ads_pipeline.run()
