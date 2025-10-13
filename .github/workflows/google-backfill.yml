@@ -47,7 +47,7 @@ jobs:
         run: |
           mkdir -p secrets
           echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
-          echo "${{ secrets.GOOGLE_GROUPS }}" | base64 --decode > google.json
+          echo "${{ secrets.GOOGLE_GROUPS }}" | base64 --decode > secrets/google.json
 
       - name: Run manual backfill for ${{ inputs.group }}
         run: |
@@ -84,7 +84,7 @@ jobs:
         run: |
           mkdir -p secrets
           echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
-          echo "${{ secrets.GOOGLE_GROUPS }}" | base64 --decode > google.json
+          echo "${{ secrets.GOOGLE_GROUPS }}" | base64 --decode > secrets/google.json
 
       - name: Run manual backfill for ${{ matrix.group }}
         run: |
