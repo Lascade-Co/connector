@@ -1,4 +1,5 @@
 import logging
+import os
 
 import dlt
 import sys
@@ -6,7 +7,7 @@ import sys
 from dlt.sources.credentials import GcpOAuthCredentials
 
 from google_ads import get_client
-from pipelines.google.sources import all_sources
+from pipelines.google.sources import all_sources, get_days_back
 from utils import get_for_group
 
 
@@ -20,6 +21,12 @@ def run():
     logging.info(f"Running Google Ads pipeline for group: {group_name}")
     logging.info(f"Pulling accounts: {', '.join(accounts)}")
 
+    # Check for backfill mode
+    days_back = get_days_back()
+    backfill_days_env = os.getenv("GOOGLE_BACKFILL_DAYS")
+    if backfill_days_env:
+        logging.info(f"Backfill mode: pulling {days_back} days of data")
+
     client = get_client(
         GcpOAuthCredentials(
             client_id=group["client_id"],
@@ -31,13 +38,17 @@ def run():
         group["login_customer_id"]
     )
 
+    # Support custom pipeline name suffix for backfill runs
+    pipeline_suffix = os.getenv("PIPELINE_NAME_SUFFIX", "")
+    pipeline_name = f"google_ads_{group_name}{pipeline_suffix}"
+
     pipe = dlt.pipeline(
-        pipeline_name=f"google_ads_{group_name}",
+        pipeline_name=pipeline_name,
         destination="clickhouse",
         dataset_name="google",
     )
     sources = []
     for customer_id in accounts:
         for source_func in all_sources:
-            sources.append(source_func(client=client, customer_id=customer_id, group_name=group_name))
+            sources.append(source_func(client=client, customer_id=customer_id, group_name=group_name, days_back=days_back))
     pipe.run(sources)
