@@ -50,5 +50,9 @@ def run():
     sources = []
     for customer_id in accounts:
         for source_func in all_sources:
-            sources.append(source_func(client=client, customer_id=customer_id, group_name=group_name, days_back=days_back))
+            # campaign_budgets doesn't support date range, so we don't pass days_back to it
+            if source_func.__name__ == "campaign_budgets":
+                sources.append(source_func(client=client, customer_id=customer_id, group_name=group_name))
+            else:
+                sources.append(source_func(client=client, customer_id=customer_id, group_name=group_name, days_back=days_back))
     pipe.run(sources)
