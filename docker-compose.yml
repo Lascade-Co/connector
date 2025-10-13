@@ -23,3 +23,17 @@ services:
     ports:
       - "8123:8123"
       - "9000:9000"
+
+  metabase:
+    image: metabase/metabase:latest
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./volumes/metabase:/metabase-data
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+    depends_on:
+      - clickhouse
+    profiles:
+      - metabase
