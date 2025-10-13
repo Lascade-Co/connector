@@ -1,4 +1,5 @@
 import datetime
+import os
 from typing import Iterator
 
 import dlt
@@ -8,6 +9,19 @@ from google.ads.googleads.client import GoogleAdsClient
 from pipelines.google.queries import AD_METRICS_QUERY, CAMPAIGN_QUERY, CONVERSION_ACTION_QUERY, run_query
 
 ROLLING_DAYS = 30
+
+
+def get_days_back() -> int:
+    """Get days_back from environment variable for backfill, or use default."""
+    backfill_days = os.getenv("GOOGLE_BACKFILL_DAYS")
+    if backfill_days:
+        try:
+            days_int = int(backfill_days)
+            if days_int > 0:
+                return days_int
+        except ValueError:
+            pass
+    return ROLLING_DAYS
 
 
 @dlt.resource(
