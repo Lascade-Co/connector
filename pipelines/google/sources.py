@@ -40,7 +40,7 @@ def ads_metrics(
 
     for r in run_query(client, customer_id, query):
         m = r.metrics
-        
+
         yield {
             "date": r.segments.date,
             "account_id": r.customer.id,
@@ -50,10 +50,12 @@ def ads_metrics(
             "campaign_name": r.campaign.name,
             "ad_group_id": r.ad_group.id,
             "ad_group_name": r.ad_group.name,
-            "target_roas": r.campaign.maximize_conversion_value.target_roas if r.campaign.maximize_conversion_value.target_roas else 0,
             "ad_id": r.ad_group_ad.ad.id,
             "ad_name": r.ad_group_ad.ad.name,
             "ad_type": r.ad_group_ad.ad.type,
+            "ad_status": str(r.ad_group_ad.status.name),
+            "ad_primary_status": str(r.ad_group_ad.primary_status.name),
+            "ad_primary_status_reason": str(r.ad_group_ad.primary_status_reasons[0].name) if r.ad_group_ad.primary_status_reasons else None,
             # Core metrics (converted from micros)
             "cost_micros": m.cost_micros,
             "impressions": m.impressions,
@@ -90,10 +92,21 @@ def campaign_budgets(
     Fetches campaign budget information.
     """
     for r in run_query(client, customer_id, CAMPAIGN_QUERY):
+        # Target ROAS can be in two different fields depending on bidding strategy
+        target_roas_value = None
+        if r.campaign.target_roas.target_roas:
+            # Target ROAS bidding strategy
+            target_roas_value = r.campaign.target_roas.target_roas
+        elif r.campaign.maximize_conversion_value.target_roas:
+            # Maximize Conversion Value with target ROAS
+            target_roas_value = r.campaign.maximize_conversion_value.target_roas
+        
         yield {
             "account_id": r.customer.id,
             "campaign_id": r.campaign.id,
             "campaign_name": r.campaign.name,
+            "bidding_strategy_type": str(r.campaign.bidding_strategy_type.name),
+            "target_roas": target_roas_value,
             "daily_budget": r.campaign_budget.amount_micros / 1000000,
             "managing_system": group_name,
         }
@@ -118,7 +131,7 @@ def conversion_actions(
 
     for r in run_query(client, customer_id, query):
         m = r.metrics
-        
+
         yield {
             "date": r.segments.date,
             "conversion_action": r.segments.conversion_action,
