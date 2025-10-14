@@ -93,13 +93,7 @@ def campaign_budgets(
     """
     for r in run_query(client, customer_id, CAMPAIGN_QUERY):
         # Target ROAS can be in two different fields depending on bidding strategy
-        target_roas_value = None
-        if r.campaign.target_roas.target_roas:
-            # Target ROAS bidding strategy
-            target_roas_value = r.campaign.target_roas.target_roas
-        elif r.campaign.maximize_conversion_value.target_roas:
-            # Maximize Conversion Value with target ROAS
-            target_roas_value = r.campaign.maximize_conversion_value.target_roas
+        target_roas_value = r.campaign.target_roas.target_roas or r.campaign.maximize_conversion_value.target_roas or None
         
         yield {
             "account_id": r.customer.id,
