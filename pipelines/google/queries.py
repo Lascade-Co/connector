@@ -16,12 +16,14 @@ AD_METRICS_QUERY = """
                        customer.descriptive_name,
                        campaign.id,
                        campaign.name,
-                       campaign.maximize_conversion_value.target_roas,
                        ad_group.id,
                        ad_group.name,
                        ad_group_ad.ad.id,
                        ad_group_ad.ad.name,
                        ad_group_ad.ad.type,
+                       ad_group_ad.status,
+                       ad_group_ad.primary_status,
+                       ad_group_ad.primary_status_reasons,
                        metrics.cost_micros,
                        metrics.impressions,
                        metrics.clicks,
@@ -44,6 +46,9 @@ CAMPAIGN_QUERY = """
                    SELECT
                        campaign.id,
                        campaign.name,
+                       campaign.bidding_strategy_type,
+                       campaign.target_roas.target_roas,
+                       campaign.maximize_conversion_value.target_roas,
                        campaign_budget.amount_micros,
                        customer.id
                    FROM campaign
