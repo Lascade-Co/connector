@@ -23,8 +23,6 @@ jobs:
       matrix:
         group: [d1, m4, d2]
       fail-fast: false  # Continue other groups even if one fails
-    # Run all groups on schedule, or only the specified group on manual trigger
-    if: github.event_name == 'schedule' || github.event.inputs.group == '' || github.event.inputs.group == matrix.group
     
     steps:
       - name: Checkout repository
@@ -47,6 +45,8 @@ jobs:
           echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}" | base64 --decode > secrets/google-play-service-account.json
       
       - name: Run Google Play ETL - ${{ matrix.group }}
+        # Skip if workflow_dispatch with specific group that doesn't match this matrix entry
+        if: github.event_name == 'schedule' || github.event.inputs.group == '' || github.event.inputs.group == matrix.group
         env:
           GOOGLE_PLAY_BACKFILL_MONTHS: ${{ github.event.inputs.backfill_months }}
         run: python main.py google_play ${{ matrix.group }}
