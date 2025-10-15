@@ -27,35 +27,24 @@ jobs:
     if: github.event_name == 'schedule' || github.event.inputs.group == '' || github.event.inputs.group == matrix.group
     
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: 3.12
+          cache: 'pip'
       
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
       
-      - name: Create secrets directory
-        run: mkdir -p secrets
-      
-      - name: Setup Google Play credentials
-        env:
-          GOOGLE_PLAY_CONFIG: ${{ secrets.GOOGLE_PLAY_CONFIG }}
-          GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+      - name: Setup Secrets
         run: |
-          echo "$GOOGLE_PLAY_CONFIG" > secrets/google_play.json
-          echo "$GOOGLE_PLAY_SERVICE_ACCOUNT" > secrets/google-play-service-account.json
-      
-      - name: Setup DLT secrets
-        env:
-          DLT_SECRETS: ${{ secrets.DLT_SECRETS }}
-        run: |
-          mkdir -p .dlt
-          echo "$DLT_SECRETS" > .dlt/secrets.toml
+          mkdir -p secrets .dlt
+          echo "${{ secrets.DLT_SECRETS }}" | base64 --decode > .dlt/secrets.toml
+          echo "${{ secrets.GOOGLE_PLAY_CONFIG }}" | base64 --decode > secrets/google_play.json
+          echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}" | base64 --decode > secrets/google-play-service-account.json
       
       - name: Run Google Play ETL - ${{ matrix.group }}
         env:
