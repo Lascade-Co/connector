@@ -1,6 +1,6 @@
-# Ads ETL Pipeline
+# Ads & App Analytics ETL Pipeline
 
-This project implements ETL (Extract, Transform, Load) pipelines for Facebook and Google Ads data, storing it in ClickHouse for analytics and visualization with Metabase.
+This project implements ETL (Extract, Transform, Load) pipelines for Facebook Ads, Google Ads, and Google Play Console data, storing it in ClickHouse for analytics and visualization with Metabase.
 
 ## 🚀 Quick Start
 
@@ -43,6 +43,12 @@ This project implements ETL (Extract, Transform, Load) pipelines for Facebook an
 - **Groups**: `d1`, `m4`, `d2`
 - **Data**: Campaign performance, ad metrics, budget information
 
+### Google Play Console
+- **Schedule**: Daily at 5:10 UTC 
+- **Groups**: Configurable per app
+- **Data**: Install statistics, crash reports, ratings, user acquisition
+- **Source**: Google Cloud Storage exports
+
 ## 🛠️ Development
 
 ### Running Pipelines
@@ -61,17 +67,26 @@ python main.py google m4    # Run group m4
 python main.py google d2    # Run group d2
 ```
 
+#### Google Play Console
+```bash
+python main.py google_play d1  # Run group d1
+
+# With backfill (6 months)
+GOOGLE_PLAY_BACKFILL_MONTHS=6 python main.py google_play d1
+```
+
 ### Configuration
 
 1. **Secrets Setup**:
    - Copy `.dlt/secrets.toml` and configure your credentials
-   - Set up `facebook.json` and `google.json` with account configurations
+   - Set up `facebook.json`, `google.json`, and `google_play.json` with account configurations
+   - For Google Play: Follow [GOOGLE_PLAY_SETUP.md](GOOGLE_PLAY_SETUP.md) for detailed setup
    - Configure GitHub Secrets for automated workflows
 
 2. **Pipeline Groups**:
    - Each platform has multiple groups (d1, m4, d2)
-   - Groups contain different sets of ad accounts
-   - Configure in `facebook.json` / `google.json`
+   - Groups contain different sets of ad accounts or apps
+   - Configure in `facebook.json` / `google.json` / `google_play.json`
 
 ## 📈 Metabase Integration (Optional)
 
@@ -103,6 +118,7 @@ GitHub Actions automatically run the ETL pipelines:
 
 - **Facebook ETL**: Daily at 1:10 UTC across all groups
 - **Google ETL**: Daily at 3:10 UTC across all groups
+- **Google Play ETL**: Daily at 5:10 UTC (configure as needed)
 
 Workflows can also be triggered manually from the GitHub Actions tab.
 
@@ -112,13 +128,17 @@ Workflows can also be triggered manually from the GitHub Actions tab.
 connector/
 ├── .github/workflows/          # GitHub Actions workflows
 │   ├── daily.yml              # Facebook Ads ETL (1:10 UTC)
-│   └── google-daily.yml       # Google Ads ETL (3:10 UTC)
+│   ├── google-daily.yml       # Google Ads ETL (3:10 UTC)
+│   └── google-play-daily.yml  # Google Play ETL (5:10 UTC)
 ├── pipelines/                 # ETL pipeline definitions
 │   ├── facebook/              # Facebook Ads pipeline
-│   └── google/                # Google Ads pipeline
+│   ├── google/                # Google Ads pipeline
+│   └── google_play/           # Google Play Console pipeline
 ├── docker-compose.yml         # Local development services
 ├── main.py                    # Pipeline runner
-└── requirements.txt           # Python dependencies
+├── requirements.txt           # Python dependencies
+├── GOOGLE_PLAY_SETUP.md       # Google Play setup guide
+└── google_play.json.example   # Google Play config example
 ```
 
 ## 🔧 Services
