@@ -4,17 +4,17 @@ on:
   schedule:
     # Run daily at 5:10 UTC (after Google Play exports are updated)
     # Fetches last 3 months of data (rolling window for data corrections)
-    - cron: '10 5 * * *'
+    - cron: "10 5 * * *"
   workflow_dispatch:
     inputs:
       group:
-        description: 'Group to run (leave empty for all groups: d1, m4, d2)'
+        description: "Group to run (leave empty for all groups: d1, m4, d2)"
         required: false
-        default: ''
+        default: ""
       backfill_months:
-        description: 'Number of months to backfill (optional, default: 3)'
+        description: "Number of months to backfill (optional, default: 3)"
         required: false
-        default: ''
+        default: ""
 
 jobs:
   # Matrix job for scheduled runs and when running all groups (parallel execution)
@@ -25,27 +25,27 @@ jobs:
       matrix:
         group: [d1, m4, d2]
       fail-fast: false
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: 3.12
-          cache: 'pip'
-      
+          cache: "pip"
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-      
+
       - name: Setup Secrets
         run: |
           mkdir -p secrets .dlt
           echo "${{ secrets.DLT_SECRETS }}" | base64 --decode > .dlt/secrets.toml
           echo "${{ secrets.GOOGLE_PLAY_CONFIG }}" | base64 --decode > secrets/google_play.json
           echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}" | base64 --decode > secrets/google-play-service-account.json
-      
+
       - name: Run Google Play ETL - ${{ matrix.group }}
         env:
           GOOGLE_PLAY_BACKFILL_MONTHS: ${{ github.event.inputs.backfill_months }}
@@ -55,27 +55,27 @@ jobs:
   google-play-single:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.group != ''
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: 3.12
-          cache: 'pip'
-      
+          cache: "pip"
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-      
+
       - name: Setup Secrets
         run: |
           mkdir -p secrets .dlt
-          echo "${{ secrets.DLT_SECRETS }}" | base64 --decode > .dlt/secrets.toml
+          echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
           echo "${{ secrets.GOOGLE_PLAY_CONFIG }}" | base64 --decode > secrets/google_play.json
           echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}" | base64 --decode > secrets/google-play-service-account.json
-      
+
       - name: Run Google Play ETL - ${{ github.event.inputs.group }}
         env:
           GOOGLE_PLAY_BACKFILL_MONTHS: ${{ github.event.inputs.backfill_months }}
