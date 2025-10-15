@@ -2,10 +2,9 @@ import json
 import logging
 import os
 import sys
+import tomllib as toml # noqa
 from pathlib import Path
 from typing import Any, Dict, List, Literal, overload
-
-import tomllib as toml # noqa
 
 
 def _load_secrets(path: Path | None = None) -> tuple[Dict[str, Any], Dict[str, Any]]:
