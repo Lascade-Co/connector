@@ -29,10 +29,11 @@ def generate_year_months(months_back: int) -> List[str]:
         target_month = current.month - i
         target_year = current.year
         
-        # Handle year rollover
-        while target_month <= 0:
-            target_month += 12
-            target_year -= 1
+        # Handle year rollover using divmod
+        if target_month <= 0:
+            year_diff, target_month = divmod(target_month - 1, 12)
+            target_year += year_diff  # year_diff will be negative
+            target_month += 1
         
         year_months.append(f"{target_year}{target_month:02d}")
     

@@ -55,10 +55,16 @@ def get_months_back() -> int:
     if backfill_months:
         try:
             months_int = int(backfill_months)
-            if months_int > 0:
-                return months_int
         except ValueError:
-            pass
+            logging.warning(
+                f"Invalid GOOGLE_PLAY_BACKFILL_MONTHS value: {backfill_months}. Using default: {ROLLING_MONTHS}")
+            return ROLLING_MONTHS
+
+        if months_int > 0:
+            return months_int
+        else:
+            logging.warning(
+                f"GOOGLE_PLAY_BACKFILL_MONTHS must be positive. Got: {months_int}. Using default: {ROLLING_MONTHS}")
     return ROLLING_MONTHS
 
 
@@ -68,11 +74,11 @@ def get_months_back() -> int:
     write_disposition="merge",
 )
 def play_installs(
-    credentials_path: str,
-    bucket_name: str,
-    package_name: str,
-    app_name: str,
-    months_back: int = ROLLING_MONTHS
+        credentials_path: str,
+        bucket_name: str,
+        package_name: str,
+        app_name: str,
+        months_back: int = ROLLING_MONTHS
 ) -> Iterator[TDataItem]:
     """
     Fetch install statistics from Google Play Console via GCS exports.
@@ -89,28 +95,31 @@ def play_installs(
     """
     client = get_storage_client(credentials_path)
     year_months = generate_year_months(months_back)
-    
+
     logging.info(f"Fetching install data for {package_name} ({app_name})")
     logging.info(f"Months to fetch: {', '.join(year_months)}")
-    
+
     blob_paths = get_installs_files(client, bucket_name, package_name, year_months)
     logging.info(f"Found {len(blob_paths)} install files")
-    
+
     for blob_path in blob_paths:
         dimension_type = extract_dimension_type(blob_path)
         logging.info(f"Processing: {blob_path}")
-        
+
         for row in download_csv_from_gcs(client, bucket_name, blob_path):
             # CSV columns (may vary by dimension):
             # Date, Package Name, Daily Device Installs, Daily Device Uninstalls, 
             # Daily Device Upgrades, Total User Installs, Daily User Installs, 
             # Daily User Uninstalls, Active Device Installs, Install events, 
             # Update events, Uninstall events, [Dimension Column]
-            
-            dimension_value = row.get('Country') or row.get('Device') or \
-                            row.get('App Version Code') or row.get('Carrier') or \
-                            row.get('Language') or row.get('Android OS Version') or 'all'
-            
+
+            dimension_value = next(
+                (row.get(key) for key in
+                 ['Country', 'Device', 'App Version Code', 'Carrier', 'Language', 'Android OS Version'] if
+                 row.get(key)),
+                'all'
+            )
+
             yield {
                 "date": row.get('Date'),
                 "package_name": package_name,
@@ -137,11 +146,11 @@ def play_installs(
     write_disposition="merge",
 )
 def play_crashes(
-    credentials_path: str,
-    bucket_name: str,
-    package_name: str,
-    app_name: str,
-    months_back: int = ROLLING_MONTHS
+        credentials_path: str,
+        bucket_name: str,
+        package_name: str,
+        app_name: str,
+        months_back: int = ROLLING_MONTHS
 ) -> Iterator[TDataItem]:
     """
     Fetch crash statistics from Google Play Console via GCS exports.
@@ -158,24 +167,26 @@ def play_crashes(
     """
     client = get_storage_client(credentials_path)
     year_months = generate_year_months(months_back)
-    
+
     logging.info(f"Fetching crash data for {package_name} ({app_name})")
     logging.info(f"Months to fetch: {', '.join(year_months)}")
-    
+
     blob_paths = get_crashes_files(client, bucket_name, package_name, year_months)
     logging.info(f"Found {len(blob_paths)} crash files")
-    
+
     for blob_path in blob_paths:
         dimension_type = extract_dimension_type(blob_path)
         logging.info(f"Processing: {blob_path}")
-        
+
         for row in download_csv_from_gcs(client, bucket_name, blob_path):
             # CSV columns (may vary by dimension):
             # Date, Package Name, Daily Crashes, Daily ANRs, [Dimension Column]
-            
-            dimension_value = row.get('Device') or row.get('App Version Code') or \
-                            row.get('Android OS Version') or 'all'
-            
+
+            dimension_value = next(
+                (row.get(key) for key in ['Device', 'App Version Code', 'Android OS Version'] if row.get(key)),
+                'all'
+            )
+
             yield {
                 "date": row.get('Date'),
                 "package_name": package_name,
@@ -194,11 +205,11 @@ def play_crashes(
     write_disposition="merge",
 )
 def play_ratings(
-    credentials_path: str,
-    bucket_name: str,
-    package_name: str,
-    app_name: str,
-    months_back: int = ROLLING_MONTHS
+        credentials_path: str,
+        bucket_name: str,
+        package_name: str,
+        app_name: str,
+        months_back: int = ROLLING_MONTHS
 ) -> Iterator[TDataItem]:
     """
     Fetch ratings statistics from Google Play Console via GCS exports.
@@ -215,25 +226,28 @@ def play_ratings(
     """
     client = get_storage_client(credentials_path)
     year_months = generate_year_months(months_back)
-    
+
     logging.info(f"Fetching ratings data for {package_name} ({app_name})")
     logging.info(f"Months to fetch: {', '.join(year_months)}")
-    
+
     blob_paths = get_ratings_files(client, bucket_name, package_name, year_months)
     logging.info(f"Found {len(blob_paths)} ratings files")
-    
+
     for blob_path in blob_paths:
         dimension_type = extract_dimension_type(blob_path)
         logging.info(f"Processing: {blob_path}")
-        
+
         for row in download_csv_from_gcs(client, bucket_name, blob_path):
             # CSV columns (may vary by dimension):
             # Date, Package Name, Daily Average Rating, Total Average Rating, [Dimension Column]
-            
-            dimension_value = row.get('Country') or row.get('Device') or \
-                            row.get('App Version Code') or row.get('Carrier') or \
-                            row.get('Language') or row.get('Android OS Version') or 'all'
-            
+
+            dimension_value = next(
+                (row.get(key) for key in
+                 ['Country', 'Device', 'App Version Code', 'Carrier', 'Language', 'Android OS Version'] if
+                 row.get(key)),
+                'all'
+            )
+
             yield {
                 "date": row.get('Date'),
                 "package_name": package_name,
@@ -252,11 +266,11 @@ def play_ratings(
     write_disposition="merge",
 )
 def play_store_performance(
-    credentials_path: str,
-    bucket_name: str,
-    package_name: str,
-    app_name: str,
-    months_back: int = ROLLING_MONTHS,
+        credentials_path: str,
+        bucket_name: str,
+        package_name: str,
+        app_name: str,
+        months_back: int = ROLLING_MONTHS,
 ) -> Iterator[Dict[str, Any]]:
     """
     Extract store listing performance data from Google Cloud Storage.
@@ -272,26 +286,27 @@ def play_store_performance(
     Yields:
         Store performance records
     """
-    from pipelines.google_play.storage import get_storage_client, download_csv_from_gcs, generate_year_months, get_store_performance_files
-    
+    from pipelines.google_play.storage import get_storage_client, download_csv_from_gcs, generate_year_months, \
+        get_store_performance_files
+
     client = get_storage_client(credentials_path)
     year_months = generate_year_months(months_back)
-    
+
     logging.info(f"Fetching store performance data for {package_name} ({app_name})")
     logging.info(f"Months to fetch: {', '.join(year_months)}")
-    
+
     blob_paths = get_store_performance_files(client, bucket_name, package_name, year_months)
     logging.info(f"Found {len(blob_paths)} store performance files")
-    
+
     for blob_path in blob_paths:
         dimension_type = extract_dimension_type(blob_path)
         logging.info(f"Processing: {blob_path}")
-        
+
         for row in download_csv_from_gcs(client, bucket_name, blob_path):
             # CSV columns (vary by dimension):
             # country: Date, Package name, Country / region, Store listing acquisitions, Store listing visitors, Store listing conversion rate
             # traffic_source: Date, Package name, Traffic source, Search term, UTM source, UTM campaign, Store listing acquisitions, Store listing visitors, Store listing conversion rate
-            
+
             if dimension_type == "country":
                 dimension_value = row.get('Country / region', 'all')
                 traffic_source = None
@@ -310,7 +325,7 @@ def play_store_performance(
                 search_term = None
                 utm_source = None
                 utm_campaign = None
-            
+
             yield {
                 "date": row.get('Date'),
                 "package_name": package_name,
