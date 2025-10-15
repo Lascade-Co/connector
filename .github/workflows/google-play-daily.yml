@@ -17,12 +17,14 @@ on:
         default: ''
 
 jobs:
-  google-play-etl:
+  # Matrix job for scheduled runs and when running all groups (parallel execution)
+  google-play-all:
     runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.group == ''
     strategy:
       matrix:
         group: [d1, m4, d2]
-      fail-fast: false  # Continue other groups even if one fails
+      fail-fast: false
     
     steps:
       - name: Checkout repository
@@ -45,8 +47,36 @@ jobs:
           echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}" | base64 --decode > secrets/google-play-service-account.json
       
       - name: Run Google Play ETL - ${{ matrix.group }}
-        # Skip if workflow_dispatch with specific group that doesn't match this matrix entry
-        if: github.event_name == 'schedule' || github.event.inputs.group == '' || github.event.inputs.group == matrix.group
         env:
           GOOGLE_PLAY_BACKFILL_MONTHS: ${{ github.event.inputs.backfill_months }}
         run: python main.py google_play ${{ matrix.group }}
+
+  # Single job for manual runs with specific group (no wasted resources)
+  google-play-single:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.group != ''
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Setup Secrets
+        run: |
+          mkdir -p secrets .dlt
+          echo "${{ secrets.DLT_SECRETS }}" | base64 --decode > .dlt/secrets.toml
+          echo "${{ secrets.GOOGLE_PLAY_CONFIG }}" | base64 --decode > secrets/google_play.json
+          echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}" | base64 --decode > secrets/google-play-service-account.json
+      
+      - name: Run Google Play ETL - ${{ github.event.inputs.group }}
+        env:
+          GOOGLE_PLAY_BACKFILL_MONTHS: ${{ github.event.inputs.backfill_months }}
+        run: python main.py google_play ${{ github.event.inputs.group }}
