@@ -39,7 +39,7 @@ jobs:
           
           # Convert to JSON array format
           IFS=',' read -ra GROUP_ARRAY <<< "$GROUPS_CLEAN"
-          GROUPS_JSON=$(printf '%s\n' "${GROUP_ARRAY[@]}" | jq -R . | jq -s .)
+          GROUPS_JSON=$(printf '%s\n' "${GROUP_ARRAY[@]}" | jq -R . | jq -s -c .)
           
           echo "groups_array=$GROUPS_JSON" >> $GITHUB_OUTPUT
           
