@@ -1,0 +1,83 @@
+name: Reusable ETL Job
+
+on:
+  workflow_call:
+    inputs:
+      pipeline:
+        description: "Pipeline name (facebook, google_analytics, google, google_play)"
+        required: true
+        type: string
+      group:
+        description: "Group name (d1, m4, d2, etc.)"
+        required: true
+        type: string
+      backfill_days:
+        description: "Number of days to backfill (optional)"
+        required: false
+        type: string
+        default: ""
+      pipeline_name_suffix:
+        description: "Suffix for pipeline name (e.g., _backfill_d1_12345)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  etl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Setup Secrets
+        env:
+          DLT_SECRETS: ${{ secrets.SECRETS }}
+          FB_GROUPS: ${{ secrets.FB_GROUPS }}
+          GOOGLE_GROUPS: ${{ secrets.GOOGLE_GROUPS }}
+          GOOGLE_PLAY_CONFIG: ${{ secrets.GOOGLE_PLAY_CONFIG }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+        run: |
+          mkdir -p secrets .dlt
+          echo "$DLT_SECRETS" | base64 --decode > .dlt/secrets.toml
+          
+          # Map pipeline to secrets and files
+          case "${{ inputs.pipeline }}" in
+            facebook)
+              echo "$FB_GROUPS" | base64 --decode > secrets/facebook.json
+              ;;
+            google)
+              echo "$GOOGLE_GROUPS" | base64 --decode > secrets/google.json
+              ;;
+            google_analytics)
+              echo "$GOOGLE_GROUPS" | base64 --decode > secrets/google_analytics.json
+              ;;
+            google_play)
+              echo "$GOOGLE_PLAY_CONFIG" | base64 --decode > secrets/google_play.json
+              echo "$GOOGLE_PLAY_SERVICE_ACCOUNT" | base64 --decode > secrets/google-play-service-account.json
+              ;;
+          esac
+
+      - name: Run ETL pipeline for ${{ inputs.pipeline }} - ${{ inputs.group }}
+        env:
+          # Set group env vars
+          FB_GROUPS: ${{ secrets.FB_GROUPS }}
+          GOOGLE_GROUPS: ${{ secrets.GOOGLE_GROUPS }}
+          # Set backfill env var based on pipeline
+          FB_BACKFILL_DAYS: ${{ inputs.pipeline == 'facebook' && inputs.backfill_days || '' }}
+          GA4_BACKFILL_DAYS: ${{ inputs.pipeline == 'google_analytics' && inputs.backfill_days || '' }}
+          GOOGLE_BACKFILL_DAYS: ${{ inputs.pipeline == 'google' && inputs.backfill_days || '' }}
+          GOOGLE_PLAY_BACKFILL_MONTHS: ${{ inputs.pipeline == 'google_play' && inputs.backfill_days || '' }}
+          # Set pipeline name suffix if provided
+          PIPELINE_NAME_SUFFIX: ${{ inputs.pipeline_name_suffix }}
+        run: |
+          python main.py '${{ inputs.pipeline }}' '${{ inputs.group }}'

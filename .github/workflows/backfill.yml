@@ -1,93 +1,79 @@
-name: FB-Ads-Manual-Backfill
+name: Unified Manual Backfill
 
 on:
   workflow_dispatch:
     inputs:
-      group:
-        description: "Facebook series/group (e.g., d1, m4, d2, or all)"
+      pipeline:
+        description: "Pipeline to backfill"
         type: choice
         required: true
         options:
-          - d1
-          - m4
-          - d2
-          - all
+          - facebook
+          - google_analytics
+          - google
+          - google_play
+      groups:
+        description: "Groups to backfill (comma-separated, e.g., 'd1,m4,d2' or single like 'd1')"
+        type: string
+        required: true
+        default: "d1"
       days:
-        description: "How many past days to backfill (e.g., 120)"
+        description: "Days to backfill (e.g., 120)"
         type: string
         required: true
 
 jobs:
-  # Single group backfill
-  backfill_one:
-    if: ${{ inputs.group != 'all' }}
+  # Parse groups and determine execution strategy
+  prepare:
     runs-on: ubuntu-latest
-
-    # Pass parameters into env vars consumed by the code
-    env:
-      # Used by setup step to materialize secrets
-      FB_GROUPS: ${{ secrets.FB_GROUPS }}
-      # Controls insights initial window in code at pipelines/facebook/raw_sources.py
-      FB_BACKFILL_DAYS: ${{ inputs.days }}
-      # Ensures a unique dlt state directory so backfill doesn't reuse prior state
-      PIPELINE_NAME_SUFFIX: _backfill_${{ inputs.group }}_${{ github.run_id }}
-
+    outputs:
+      groups_array: ${{ steps.parse.outputs.groups_array }}
+      is_single: ${{ steps.parse.outputs.is_single }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.12
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Setup Secrets
+      - name: Parse groups input
+        id: parse
         run: |
-          mkdir -p secrets
-          echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
-          echo "${{ secrets.FB_GROUPS }}" | base64 --decode > secrets/facebook.json
+          # Remove spaces and split by comma
+          GROUPS="${{ inputs.groups }}"
+          GROUPS_CLEAN=$(echo "$GROUPS" | tr -d ' ')
+          
+          # Convert to JSON array format
+          IFS=',' read -ra GROUP_ARRAY <<< "$GROUPS_CLEAN"
+          GROUPS_JSON=$(printf '%s\n' "${GROUP_ARRAY[@]}" | jq -R . | jq -s .)
+          
+          echo "groups_array=$GROUPS_JSON" >> $GITHUB_OUTPUT
+          
+          # Check if single group
+          if [ ${#GROUP_ARRAY[@]} -eq 1 ]; then
+            echo "is_single=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_single=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Run manual backfill for ${{ inputs.group }}
-        run: |
-          python main.py 'facebook' '${{ inputs.group }}'
+  # Single group backfill (when only one group provided)
+  backfill_single:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.is_single == 'true' }}
+    uses: ./.github/workflows/_reusable-etl.yml
+    with:
+      pipeline: ${{ inputs.pipeline }}
+      group: ${{ inputs.groups }}
+      backfill_days: ${{ inputs.days }}
+      pipeline_name_suffix: _backfill_${{ inputs.groups }}_${{ github.run_id }}
+    secrets: inherit
 
-  # All groups backfill in parallel
-  backfill_all:
-    if: ${{ inputs.group == 'all' }}
-    runs-on: ubuntu-latest
+  # Multiple groups backfill in parallel (when multiple groups provided)
+  backfill_matrix:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.is_single == 'false' }}
     strategy:
       matrix:
-        group: [d1, m4, d2]
+        group: ${{ fromJSON(needs.prepare.outputs.groups_array) }}
       fail-fast: false
-
-    env:
-      FB_GROUPS: ${{ secrets.FB_GROUPS }}
-      FB_BACKFILL_DAYS: ${{ inputs.days }}
-      PIPELINE_NAME_SUFFIX: _backfill_${{ matrix.group }}_${{ github.run_id }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.12
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Setup Secrets
-        run: |
-          mkdir -p secrets
-          echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
-          echo "${{ secrets.FB_GROUPS }}" | base64 --decode > secrets/facebook.json
-
-      - name: Run manual backfill for ${{ matrix.group }}
-        run: |
-          python main.py 'facebook' '${{ matrix.group }}'
+    uses: ./.github/workflows/_reusable-etl.yml
+    with:
+      pipeline: ${{ inputs.pipeline }}
+      group: ${{ matrix.group }}
+      backfill_days: ${{ inputs.days }}
+      pipeline_name_suffix: _backfill_${{ matrix.group }}_${{ github.run_id }}
+    secrets: inherit
