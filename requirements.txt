@@ -14,5 +14,7 @@ facebook_business~=22.0.4
 facebook_business~=22.0.4
 google-ads~=27.0.0
 
+google-analytics-data~=0.18.19
+
 # Google Play Console (GCS exports)
 google-cloud-storage~=3.4.1

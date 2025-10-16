@@ -7,3 +7,8 @@ dlthub_telemetry = false
 
 [sources.facebook_ads]
 account_id = "344051707969015" # please set me up!
+
+[sources.google_analytics]
+# Property ID is now configured per-group in secrets/google_analytics.json
+# This section is kept for backward compatibility with the original dlt setup
+property_id = 0 # Not used in production - configured via group secrets

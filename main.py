@@ -4,6 +4,7 @@ import sys
 from pipelines import pg
 from pipelines.facebook import facebook_ads_pipeline
 from pipelines.google import google_ads_pipeline
+from pipelines.google_analytics import google_analytics_pipeline
 from pipelines.google_play import google_play_pipeline
 from utils import setup_logging
 
@@ -18,5 +19,7 @@ if __name__ == "__main__":
     elif sys.argv[1] == "google":
         logging.info("doing nothing for now")
         google_ads_pipeline.run()
+    elif sys.argv[1] == "google_analytics":
+        google_analytics_pipeline.run()
     elif sys.argv[1] == "google_play":
         google_play_pipeline.run()

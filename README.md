@@ -1,6 +1,6 @@
 # Ads & App Analytics ETL Pipeline
 
-This project implements ETL (Extract, Transform, Load) pipelines for Facebook Ads, Google Ads, and Google Play Console data, storing it in ClickHouse for analytics and visualization with Metabase.
+This project implements ETL (Extract, Transform, Load) pipelines for Facebook Ads, Google Ads, Google Analytics 4 (GA4), and Google Play Console data, storing it in ClickHouse for analytics and visualization with Metabase.
 
 ## 🚀 Quick Start
 
@@ -43,6 +43,11 @@ This project implements ETL (Extract, Transform, Load) pipelines for Facebook Ad
 - **Groups**: `d1`, `m4`, `d2`
 - **Data**: Campaign performance, ad metrics, budget information
 
+### Google Analytics 4 (GA4)
+- **Schedule**: Daily at 1:30 UTC
+- **Groups**: `d1` (configurable)
+- **Data**: Traffic sources, user engagement, device analytics, events
+
 ### Google Play Console
 - **Schedule**: Daily at 5:10 UTC 
 - **Groups**: Configurable per app
@@ -67,6 +72,14 @@ python main.py google m4    # Run group m4
 python main.py google d2    # Run group d2
 ```
 
+#### Google Analytics 4 (GA4)
+```bash
+python main.py google_analytics d1  # Run group d1
+
+# With backfill (120 days)
+GA4_BACKFILL_DAYS=120 python main.py google_analytics d1
+```
+
 #### Google Play Console
 ```bash
 python main.py google_play d1  # Run group d1
@@ -80,13 +93,13 @@ GOOGLE_PLAY_BACKFILL_MONTHS=6 python main.py google_play d1
 1. **Secrets Setup**:
    - Copy `.dlt/secrets.toml` and configure your credentials
    - Set up `facebook.json`, `google.json`, and `google_play.json` with account configurations
-   - For Google Play: Follow [GOOGLE_PLAY_SETUP.md](GOOGLE_PLAY_SETUP.md) for detailed setup
+   - **GA4 uses the same `google.json` file as Google Ads** - just add GA4 property IDs to the `account_ids` array
    - Configure GitHub Secrets for automated workflows
 
 2. **Pipeline Groups**:
    - Each platform has multiple groups (d1, m4, d2)
    - Groups contain different sets of ad accounts or apps
-   - Configure in `facebook.json` / `google.json` / `google_play.json`
+   - Configure in `facebook.json` / `google.json` / `google_play.json` / `google_analytics.json`
 
 ## 📈 Metabase Integration (Optional)
 
@@ -117,10 +130,15 @@ docker compose stop metabase
 GitHub Actions automatically run the ETL pipelines:
 
 - **Facebook ETL**: Daily at 1:10 UTC across all groups
-- **Google ETL**: Daily at 3:10 UTC across all groups
+- **GA4 ETL**: Daily at 1:30 UTC across all groups
+- **Google Ads ETL**: Daily at 3:10 UTC across all groups
 - **Google Play ETL**: Daily at 5:10 UTC (configure as needed)
 
 Workflows can also be triggered manually from the GitHub Actions tab.
+
+### Manual Backfill Workflows
+- **GA4 Backfill**: `.github/workflows/ga4-backfill.yml` - Pull historical GA4 data
+- **Google Ads Backfill**: `.github/workflows/google-backfill.yml` - Pull historical ads data
 
 ## 📁 Project Structure
 
@@ -128,17 +146,23 @@ Workflows can also be triggered manually from the GitHub Actions tab.
 connector/
 ├── .github/workflows/          # GitHub Actions workflows
 │   ├── daily.yml              # Facebook Ads ETL (1:10 UTC)
+│   ├── ga4-daily.yml          # GA4 ETL (1:30 UTC)
+│   ├── ga4-backfill.yml       # GA4 manual backfill
 │   ├── google-daily.yml       # Google Ads ETL (3:10 UTC)
+│   ├── google-backfill.yml    # Google Ads manual backfill
 │   └── google-play-daily.yml  # Google Play ETL (5:10 UTC)
 ├── pipelines/                 # ETL pipeline definitions
 │   ├── facebook/              # Facebook Ads pipeline
 │   ├── google/                # Google Ads pipeline
+│   ├── google_analytics/      # GA4 pipeline
 │   └── google_play/           # Google Play Console pipeline
+├── google_analytics/          # GA4 dlt source (official implementation)
+│   ├── GA4_SETUP.md           # GA4 setup guide
+│   └── ...
 ├── docker-compose.yml         # Local development services
 ├── main.py                    # Pipeline runner
 ├── requirements.txt           # Python dependencies
-├── GOOGLE_PLAY_SETUP.md       # Google Play setup guide
-└── google_play.json.example   # Google Play config example
+└── GOOGLE_PLAY_SETUP.md       # Google Play setup guide
 ```
 
 ## 🔧 Services

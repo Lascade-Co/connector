@@ -2,9 +2,9 @@ import json
 import logging
 import os
 import sys
-import tomllib as toml # noqa
+import tomllib as toml  # noqa
 from pathlib import Path
-from typing import Any, Dict, List, Literal, overload
+from typing import Any, Dict, List
 
 
 def _load_secrets(path: Path | None = None) -> tuple[Dict[str, Any], Dict[str, Any]]:
@@ -45,19 +45,13 @@ def _load_secrets(path: Path | None = None) -> tuple[Dict[str, Any], Dict[str, A
     return pg_cfg, ch_cfg
 
 
-@overload
-def get_for_group(group: str, platform: Literal["google_play"]) -> tuple[Dict[str, str], List[Dict[str, str]]]: ...
-
-@overload
-def get_for_group(group: str, platform: Literal["facebook", "google"]) -> tuple[Dict[str, str], List[str]]: ...
-
-def get_for_group(group: str, platform: Literal["facebook", "google", "google_play"]) -> tuple[Dict[str, str], List[str]] | tuple[Dict[str, str], List[Dict[str, str]]]:
+def get_for_group(group: str, platform: str) -> tuple[Dict[str, str], List[str | Dict[str, str]]]:
     """
     Get configuration and account IDs for a specific group and platform.
     
     Args:
         group: Group name (e.g., 'd1', 'm4', 'd2')
-        platform: Platform name ('facebook', 'google', or 'google_play')
+        platform: Platform name ('facebook', 'google', 'google_play')
     
     Returns:
         For facebook/google: (group_config, list of account ID strings)
@@ -79,7 +73,7 @@ def get_for_group(group: str, platform: Literal["facebook", "google", "google_pl
         raise SystemExit(f"Group '{group}' not found in {platform} secrets file.")
 
     accounts_ids = data[group]["account_ids"]
-    
+
     # For google_play, account_ids is a list of dicts with package_name and app_name
     # For facebook/google, it's a list of account IDs
     if platform == "google_play":
