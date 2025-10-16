@@ -1,0 +1,14 @@
+name: GA4 Daily ETL
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 4 * * *"  # Every day at 04:30 UTC
+
+jobs:
+  ga4_d1:
+    uses: ./.github/workflows/_reusable-etl.yml
+    with:
+      pipeline: google_analytics
+      group: d1
+    secrets: inherit

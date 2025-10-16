@@ -1,0 +1,14 @@
+name: Google Ads Daily ETL
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 3 * * *"  # Every day at 03:10 UTC
+
+jobs:
+  google_ads_d1:
+    uses: ./.github/workflows/_reusable-etl.yml
+    with:
+      pipeline: google
+      group: d1
+    secrets: inherit

@@ -1,0 +1,14 @@
+name: Google Play Console Daily ETL
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 5 * * *"  # Every day at 05:10 UTC
+
+jobs:
+  google_play_etl:
+    uses: ./.github/workflows/_reusable-etl.yml
+    with:
+      pipeline: google_play
+      group: d1
+    secrets: inherit

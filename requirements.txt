@@ -9,10 +9,9 @@ clickhouse-connect~=0.8.17
 proto-plus~=1.26.1
 google-api-python-client~=2.169.0
 protobuf~=6.30.2
-facebook_business~=22.0.4
-
-facebook_business~=22.0.4
 google-ads~=27.0.0
+
+google-analytics-data~=0.18.19
 
 # Google Play Console (GCS exports)
 google-cloud-storage~=3.4.1
