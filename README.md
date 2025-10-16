@@ -92,8 +92,8 @@ GOOGLE_PLAY_BACKFILL_MONTHS=6 python main.py google_play d1
 
 1. **Secrets Setup**:
    - Copy `.dlt/secrets.toml` and configure your credentials
-   - Set up `facebook.json`, `google.json`, and `google_play.json` with account configurations
-   - **GA4 uses the same `google.json` file as Google Ads** - just add GA4 property IDs to the `account_ids` array
+   - Set up `facebook.json`, `google.json`, `google_analytics.json`, and `google_play.json` with account configurations
+   - **GA4 requires a dedicated `google_analytics.json` file** with property IDs and OAuth credentials
    - Configure GitHub Secrets for automated workflows
 
 2. **Pipeline Groups**:
@@ -145,24 +145,30 @@ Workflows can also be triggered manually from the GitHub Actions tab.
 ```
 connector/
 ├── .github/workflows/          # GitHub Actions workflows
-│   ├── daily.yml              # Facebook Ads ETL (1:10 UTC)
-│   ├── ga4-daily.yml          # GA4 ETL (1:30 UTC)
-│   ├── ga4-backfill.yml       # GA4 manual backfill
-│   ├── google-daily.yml       # Google Ads ETL (3:10 UTC)
-│   ├── google-backfill.yml    # Google Ads manual backfill
-│   └── google-play-daily.yml  # Google Play ETL (5:10 UTC)
+│   ├── _reusable-etl.yml      # Shared job template
+│   ├── backfill.yml           # Manual backfill entry point
+│   ├── daily-facebook.yml     # Facebook Ads ETL schedule
+│   ├── daily-ga4.yml          # GA4 ETL schedule
+│   ├── daily-google-ads.yml   # Google Ads ETL schedule
+│   ├── daily-google-play.yml  # Google Play ETL schedule
+│   └── main.yml               # Default workflow (dispatch)
 ├── pipelines/                 # ETL pipeline definitions
 │   ├── facebook/              # Facebook Ads pipeline
 │   ├── google/                # Google Ads pipeline
 │   ├── google_analytics/      # GA4 pipeline
-│   └── google_play/           # Google Play Console pipeline
-├── google_analytics/          # GA4 dlt source (official implementation)
-│   ├── GA4_SETUP.md           # GA4 setup guide
-│   └── ...
+│   ├── google_play/           # Google Play Console pipeline
+│   └── pg/                    # PostgreSQL replication pipeline
+├── google_analytics/          # GA4 dlt source (customized)
+│   ├── README.md              # GA4 setup guide
+│   ├── helpers/               # GA4 helper utilities
+│   └── settings.py            # GA4 configuration defaults
+├── facebook_ads/              # Facebook Ads dlt source (customized)
+├── google_ads/                # Google Ads helpers and setup scripts
+├── pg_replication/            # Logical replication helpers
 ├── docker-compose.yml         # Local development services
 ├── main.py                    # Pipeline runner
 ├── requirements.txt           # Python dependencies
-└── GOOGLE_PLAY_SETUP.md       # Google Play setup guide
+└── utils.py                   # Shared helpers
 ```
 
 ## 🔧 Services

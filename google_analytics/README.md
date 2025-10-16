@@ -1,5 +1,7 @@
 # Google Analytics
 
+> This repository uses a custom GA4 pipeline orchestrated via `python main.py google_analytics <group>` and configured with `google_analytics.json`. The sections below summarize the upstream `dlt` verified source that powers the implementation. Follow the root `README.md` for end-to-end setup instructions.
+
 Google Analytics is a web analytics service that tracks and provides data about user engagement with your website or application. Using this `dlt` Google Analytics verified source and pipeline example, you can load the following resources from Google Analytics to your preferred destination.
 
 | Resource name | Description |
@@ -40,17 +42,18 @@ To learn about grabbing the Google Analytics credentials and configuring the ver
     pip install -r requirements.txt
     ```
 
-2. Run the pipeline by using the following command:
+2. Execute the repository pipeline with the desired group:
     ```bash
-    python google_analytics_pipelines.py
+    python main.py google_analytics <group>
     ```
+    For backfills, set `GA4_BACKFILL_DAYS` before running the command.
 
 3. Make sure that everything is loaded as expected by using the command:
     ```bash
     dlt pipeline <pipeline_name> show
     ```
 
-    For example, the pipeline_name for the above pipeline example is `dlt_google_analytics_pipeline`, but you may also use any custom name instead.
+    For example, the pipeline_name for the upstream example is `dlt_google_analytics_pipeline`, but you may also use any custom name instead.
 
 
 💡 To explore additional customizations for this pipeline, we recommend referring to the official `dlt`

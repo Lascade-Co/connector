@@ -32,7 +32,7 @@ def google_analytics(
     property_id: int = dlt.config.value,
     queries: List[DictStrAny] = dlt.config.value,
     start_date: Optional[str] = START_DATE,
-    rows_per_page: int = 1000,
+    rows_per_page: int = 10000,
 ) -> List[DltResource]:
     """
     The DLT source for Google Analytics. Loads basic Analytics info to the pipeline.

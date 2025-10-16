@@ -28,10 +28,6 @@ except ImportError:
     raise MissingDependencyException(
         "Google Analytics API Client", ["google-analytics-data"]
     )
-try:
-    from apiclient.discovery import build, Resource
-except ImportError:
-    raise MissingDependencyException("Google API Client", ["google-api-python-client"])
 
 
 def to_dict(item: Any) -> Iterator[TDataItem]:
@@ -52,7 +48,7 @@ def to_dict(item: Any) -> Iterator[TDataItem]:
 
 
 def get_report(
-    client: Resource,
+    client: BetaAnalyticsDataClient,
     property_id: int,
     dimension_list: List[Dimension],
     metric_list: List[Metric],
