@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+import datetime
 import tomllib as toml  # noqa
 from pathlib import Path
 from typing import Any, Dict, List
@@ -104,3 +105,49 @@ def setup_logging():
         format="%(levelname)s │ %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)]
     )
+
+
+def date_key_from_ga4(dim_date: Any | None) -> str | None:
+    """
+    Normalize GA4 date dimension to ISO date string YYYY-MM-DD.
+    GA4 "date" is typically 'YYYYMMDD'. If already 'YYYY-MM-DD', return as-is.
+    Returns None if input is None or malformed.
+    """
+    if dim_date is None:
+        return None
+    # Handle datetime/date inputs directly
+    if isinstance(dim_date, datetime.datetime):
+        return dim_date.date().isoformat()
+    if isinstance(dim_date, datetime.date):
+        return dim_date.isoformat()
+    # Fallback to string handling
+    s = str(dim_date).strip()
+    if not s:
+        return None
+    if '-' in s:
+        # assume already ISO date
+        return s
+    if len(s) == 8 and s.isdigit():
+        return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
+    # Fallback: return original string; downstream may coerce/validate
+    return s
+
+
+essentially_iso_lengths = {10}
+
+
+def date_key_from_play(date_str: Any | None) -> str | None:
+    """
+    Normalize Google Play CSV Date to ISO date string YYYY-MM-DD.
+    Input is usually already 'YYYY-MM-DD'; return None if missing/empty.
+    """
+    if date_str is None:
+        return None
+    if isinstance(date_str, datetime.datetime):
+        return date_str.date().isoformat()
+    if isinstance(date_str, datetime.date):
+        return date_str.isoformat()
+    s = str(date_str).strip()
+    if not s:
+        return None
+    return s

@@ -13,6 +13,7 @@ from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import Dimension, Metric
 
 from google_analytics.helpers.data_processing import get_report
+from utils import date_key_from_ga4
 
 ROLLING_DAYS = 120
 
@@ -31,7 +32,7 @@ def get_days_back() -> int:
 
 
 def get_client(
-    credentials: GcpOAuthCredentials | GcpServiceAccountCredentials,
+        credentials: GcpOAuthCredentials | GcpServiceAccountCredentials,
 ) -> BetaAnalyticsDataClient:
     """
     Create and return a GA4 BetaAnalyticsDataClient.
@@ -45,37 +46,37 @@ def get_client(
     # Generate access token for credentials if we are using OAuth2.0
     if isinstance(credentials, GcpOAuthCredentials):
         credentials.auth("https://www.googleapis.com/auth/analytics.readonly")
-    
+
     # Build the service object for Google Analytics API
     return BetaAnalyticsDataClient(credentials=credentials.to_native_credentials())
 
 
 def _create_report_resource(
-    name: str,
-    primary_key: List[str],
-    dimensions: List[Dimension],
-    metrics: List[Metric],
-    row_mapper: Callable[[dict, int, str], TDataItem],
-    doc: str,
+        name: str,
+        primary_key: List[str],
+        dimensions: List[Dimension],
+        metrics: List[Metric],
+        row_mapper: Callable[[dict, int, str], TDataItem],
+        doc: str,
 ) -> Callable[[BetaAnalyticsDataClient, int, str, int], Iterator[TDataItem]]:
     @dlt.resource(name=name, primary_key=primary_key, write_disposition="merge")
     def resource(
-        client: BetaAnalyticsDataClient,
-        property_id: int,
-        group_name: str,
-        days_back: int = ROLLING_DAYS,
+            client: BetaAnalyticsDataClient,
+            property_id: int,
+            group_name: str,
+            days_back: int = ROLLING_DAYS,
     ) -> Iterator[TDataItem]:
         end_date = datetime.date.today() - datetime.timedelta(days=1)
         start_date = end_date - datetime.timedelta(days=days_back)
 
         for row in get_report(
-            client=client,
-            property_id=property_id,
-            dimension_list=dimensions,
-            metric_list=metrics,
-            limit=10000,
-            start_date=start_date.strftime("%Y-%m-%d"),
-            end_date=end_date.strftime("%Y-%m-%d"),
+                client=client,
+                property_id=property_id,
+                dimension_list=dimensions,
+                metric_list=metrics,
+                limit=10000,
+                start_date=start_date.strftime("%Y-%m-%d"),
+                end_date=end_date.strftime("%Y-%m-%d"),
         ):
             yield row_mapper(row, property_id, group_name)
 
@@ -100,6 +101,7 @@ traffic_sources = _create_report_resource(
         "property_id": str(property_id),
         "managing_system": group_name,
         "date": row.get("date"),
+        "date_key_pt": date_key_from_ga4(row.get("date")),
         "source": row.get("source"),
         "medium": row.get("medium"),
         "campaign": row.get("campaignName"),
@@ -108,7 +110,6 @@ traffic_sources = _create_report_resource(
     },
     doc="""Fetches traffic source data from GA4. Includes sessions, users, and conversions by source/medium.""",
 )
-
 
 session_traffic_sources = _create_report_resource(
     name="ga4_session_traffic_sources",
@@ -129,6 +130,7 @@ session_traffic_sources = _create_report_resource(
         "property_id": str(property_id),
         "managing_system": group_name,
         "date": row.get("date"),
+        "date_key_pt": date_key_from_ga4(row.get("date")),
         "session_source": row.get("sessionSource"),
         "session_medium": row.get("sessionMedium"),
         "session_campaign": row.get("sessionCampaignName"),
@@ -139,7 +141,6 @@ session_traffic_sources = _create_report_resource(
     },
     doc="""Fetches session-level traffic source data from GA4. Includes sessions, users, and pageviews by source/medium (session-scoped).""",
 )
-
 
 user_engagement = _create_report_resource(
     name="ga4_user_engagement",
@@ -159,6 +160,7 @@ user_engagement = _create_report_resource(
         "property_id": str(property_id),
         "managing_system": group_name,
         "date": row.get("date"),
+        "date_key_pt": date_key_from_ga4(row.get("date")),
         "sessions": int(row.get("sessions_INTEGER", 0)),
         "engagement_rate": float(row.get("engagementRate_FLOAT", 0)),
         "average_session_duration": float(row.get("averageSessionDuration_SECONDS", 0)),
@@ -168,7 +170,6 @@ user_engagement = _create_report_resource(
     },
     doc="""Fetches user engagement metrics from GA4. Includes engagement rate, session duration, etc.""",
 )
-
 
 device_category = _create_report_resource(
     name="ga4_device_category",
@@ -187,6 +188,7 @@ device_category = _create_report_resource(
         "property_id": str(property_id),
         "managing_system": group_name,
         "date": row.get("date"),
+        "date_key_pt": date_key_from_ga4(row.get("date")),
         "device_category": row.get("deviceCategory"),
         "sessions": int(row.get("sessions_INTEGER", 0)),
         "total_users": int(row.get("totalUsers_INTEGER", 0)),
@@ -195,7 +197,6 @@ device_category = _create_report_resource(
     },
     doc="""Fetches device category breakdown from GA4.""",
 )
-
 
 events = _create_report_resource(
     name="ga4_events",
@@ -213,6 +214,7 @@ events = _create_report_resource(
         "property_id": str(property_id),
         "managing_system": group_name,
         "date": row.get("date"),
+        "date_key_pt": date_key_from_ga4(row.get("date")),
         "event_name": row.get("eventName"),
         "event_count": int(row.get("eventCount_INTEGER", 0)),
         "event_count_per_user": float(row.get("eventCountPerUser_FLOAT", 0)),
@@ -220,7 +222,6 @@ events = _create_report_resource(
     },
     doc="""Fetches event data from GA4.""",
 )
-
 
 all_sources = [
     traffic_sources,

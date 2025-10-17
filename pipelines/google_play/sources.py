@@ -17,6 +17,7 @@ from pipelines.google_play.storage import (
     get_ratings_files,
     download_csv_from_gcs
 )
+from utils import date_key_from_play
 
 ROLLING_MONTHS = 3
 
@@ -122,6 +123,7 @@ def play_installs(
 
             yield {
                 "date": row.get('Date'),
+                "date_key_pt": date_key_from_play(row.get('Date')),
                 "package_name": package_name,
                 "app_name": app_name,
                 "dimension_type": dimension_type,
@@ -189,6 +191,7 @@ def play_crashes(
 
             yield {
                 "date": row.get('Date'),
+                "date_key_pt": date_key_from_play(row.get('Date')),
                 "package_name": package_name,
                 "app_name": app_name,
                 "dimension_type": dimension_type,
@@ -250,6 +253,7 @@ def play_ratings(
 
             yield {
                 "date": row.get('Date'),
+                "date_key_pt": date_key_from_play(row.get('Date')),
                 "package_name": package_name,
                 "app_name": app_name,
                 "dimension_type": dimension_type,
@@ -328,6 +332,7 @@ def play_store_performance(
 
             yield {
                 "date": row.get('Date'),
+                "date_key_pt": date_key_from_play(row.get('Date')),
                 "package_name": package_name,
                 "app_name": app_name,
                 "dimension_type": dimension_type,
