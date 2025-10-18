@@ -241,6 +241,7 @@ events = _create_report_resource(
         Metric(name="eventCount"),
         Metric(name="eventCountPerUser"),
         Metric(name="eventValue"),
+        Metric(name="totalUsers"),
     ],
     row_mapper=lambda row, property_id, group_name: {
         "property_id": str(property_id),
@@ -252,6 +253,7 @@ events = _create_report_resource(
         "event_count": int(row.get("eventCount_INTEGER", 0)),
         "event_count_per_user": float(row.get("eventCountPerUser_FLOAT", 0)),
         "event_value": float(row.get("eventValue_CURRENCY", 0)),
+        "total_users": int(row.get("totalUsers_INTEGER", 0)),
     },
     doc="""Fetches event data from GA4.""",
 )
