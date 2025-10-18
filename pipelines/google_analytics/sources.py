@@ -86,9 +86,10 @@ def _create_report_resource(
 
 traffic_sources = _create_report_resource(
     name="ga4_traffic_sources",
-    primary_key=["property_id", "date", "source", "medium"],
+    primary_key=["property_id", "date", "platform", "source", "medium"],
     dimensions=[
         Dimension(name="date"),
+        Dimension(name="platform"),
         Dimension(name="source"),
         Dimension(name="medium"),
         Dimension(name="campaignName"),
@@ -102,6 +103,7 @@ traffic_sources = _create_report_resource(
         "managing_system": group_name,
         "date": row.get("date"),
         "date_key_pt": date_key_from_ga4(row.get("date")),
+        "platform": row.get("platform"),
         "source": row.get("source"),
         "medium": row.get("medium"),
         "campaign": row.get("campaignName"),
@@ -113,9 +115,10 @@ traffic_sources = _create_report_resource(
 
 session_traffic_sources = _create_report_resource(
     name="ga4_session_traffic_sources",
-    primary_key=["property_id", "date", "session_source", "session_medium"],
+    primary_key=["property_id", "date", "platform", "session_source", "session_medium"],
     dimensions=[
         Dimension(name="date"),
+        Dimension(name="platform"),
         Dimension(name="sessionSource"),
         Dimension(name="sessionMedium"),
         Dimension(name="sessionCampaignName"),
@@ -131,6 +134,7 @@ session_traffic_sources = _create_report_resource(
         "managing_system": group_name,
         "date": row.get("date"),
         "date_key_pt": date_key_from_ga4(row.get("date")),
+        "platform": row.get("platform"),
         "session_source": row.get("sessionSource"),
         "session_medium": row.get("sessionMedium"),
         "session_campaign": row.get("sessionCampaignName"),
@@ -144,9 +148,10 @@ session_traffic_sources = _create_report_resource(
 
 user_engagement = _create_report_resource(
     name="ga4_user_engagement",
-    primary_key=["property_id", "date"],
+    primary_key=["property_id", "date", "platform"],
     dimensions=[
         Dimension(name="date"),
+        Dimension(name="platform"),
     ],
     metrics=[
         Metric(name="sessions"),
@@ -161,6 +166,7 @@ user_engagement = _create_report_resource(
         "managing_system": group_name,
         "date": row.get("date"),
         "date_key_pt": date_key_from_ga4(row.get("date")),
+        "platform": row.get("platform"),
         "sessions": int(row.get("sessions_INTEGER", 0)),
         "engagement_rate": float(row.get("engagementRate_FLOAT", 0)),
         "average_session_duration": float(row.get("averageSessionDuration_SECONDS", 0)),
@@ -173,9 +179,10 @@ user_engagement = _create_report_resource(
 
 device_category = _create_report_resource(
     name="ga4_device_category",
-    primary_key=["property_id", "date", "device_category"],
+    primary_key=["property_id", "date", "platform", "device_category"],
     dimensions=[
         Dimension(name="date"),
+        Dimension(name="platform"),
         Dimension(name="deviceCategory"),
     ],
     metrics=[
@@ -189,6 +196,7 @@ device_category = _create_report_resource(
         "managing_system": group_name,
         "date": row.get("date"),
         "date_key_pt": date_key_from_ga4(row.get("date")),
+        "platform": row.get("platform"),
         "device_category": row.get("deviceCategory"),
         "sessions": int(row.get("sessions_INTEGER", 0)),
         "total_users": int(row.get("totalUsers_INTEGER", 0)),
@@ -198,11 +206,35 @@ device_category = _create_report_resource(
     doc="""Fetches device category breakdown from GA4.""",
 )
 
-events = _create_report_resource(
-    name="ga4_events",
-    primary_key=["property_id", "date", "event_name"],
+users = _create_report_resource(
+    name="ga4_users",
+    primary_key=["property_id", "date", "platform", "new_vs_returning"],
     dimensions=[
         Dimension(name="date"),
+        Dimension(name="platform"),
+        Dimension(name="newVsReturning"),
+    ],
+    metrics=[
+        Metric(name="activeUsers"),
+    ],
+    row_mapper=lambda row, property_id, group_name: {
+        "property_id": str(property_id),
+        "managing_system": group_name,
+        "date": row.get("date"),
+        "date_key_pt": date_key_from_ga4(row.get("date")),
+        "platform": row.get("platform"),
+        "new_vs_returning": row.get("newVsReturning"),
+        "active_users": int(row.get("activeUsers_INTEGER", 0)),
+    },
+    doc="""Fetches active users split by new vs returning from GA4.""",
+)
+
+events = _create_report_resource(
+    name="ga4_events",
+    primary_key=["property_id", "date", "platform", "event_name"],
+    dimensions=[
+        Dimension(name="date"),
+        Dimension(name="platform"),
         Dimension(name="eventName"),
     ],
     metrics=[
@@ -215,6 +247,7 @@ events = _create_report_resource(
         "managing_system": group_name,
         "date": row.get("date"),
         "date_key_pt": date_key_from_ga4(row.get("date")),
+        "platform": row.get("platform"),
         "event_name": row.get("eventName"),
         "event_count": int(row.get("eventCount_INTEGER", 0)),
         "event_count_per_user": float(row.get("eventCountPerUser_FLOAT", 0)),
@@ -228,5 +261,6 @@ all_sources = [
     session_traffic_sources,
     user_engagement,
     device_category,
+    users,
     events,
 ]
