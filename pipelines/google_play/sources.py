@@ -8,6 +8,7 @@ from typing import Iterator, Dict, Any
 
 import dlt
 from dlt.common.typing import TDataItem
+from datetime import datetime, timezone
 
 from pipelines.google_play.storage import (
     get_storage_client,
@@ -331,7 +332,7 @@ def play_store_performance(
                 utm_campaign = None
 
             yield {
-                "date": row.get('Date'),
+                "date": datetime.strptime(row.get('Date'), "%Y-%m-%d").replace(tzinfo=timezone.utc),
                 "date_key_pt": date_key_from_play(row.get('Date')),
                 "package_name": package_name,
                 "app_name": app_name,
