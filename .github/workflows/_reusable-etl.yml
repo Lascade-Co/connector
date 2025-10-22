@@ -68,6 +68,11 @@ jobs:
               ;;
           esac
 
+      - name: Connect to Lascade VPN
+        uses: rohittp0/wiregaurd@v2
+        with:
+          config: ${{ secrets.WG_CONFIG_BASE64 }}
+
       - name: Run ETL pipeline for ${{ inputs.pipeline }} - ${{ inputs.group }}
         env:
           # Set group env vars
