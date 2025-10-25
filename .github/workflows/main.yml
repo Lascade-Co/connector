@@ -22,9 +22,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Setu Secrets
-        run: echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
-
       - name: Connect to Lascade VPN
         uses: rohittp0/wiregaurd@v2
         with:
