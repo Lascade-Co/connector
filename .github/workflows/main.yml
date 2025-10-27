@@ -26,7 +26,7 @@ jobs:
         run: echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
 
       - name: Connect to Lascade VPN
-        uses: Jenin82/wiregaurd@v3
+        uses: rohittp0/wiregaurd@v2
         with:
           config: ${{ secrets.WG_CONFIG_BASE64 }}
 
