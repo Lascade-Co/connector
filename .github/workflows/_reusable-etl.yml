@@ -67,11 +67,6 @@ jobs:
               echo "$GOOGLE_PLAY_SERVICE_ACCOUNT" | base64 --decode > secrets/google-play-service-account.json
               ;;
           esac
-        
-      - name: Connect to Lascade VPN
-        uses: Jenin82/wiregaurd@v2
-        with:
-          config: ${{ secrets.WG_CONFIG_BASE64 }}
 
       - name: Run ETL pipeline for ${{ inputs.pipeline }} - ${{ inputs.group }}
         env:
