@@ -69,7 +69,7 @@ jobs:
           esac
 
       - name: Connect to Lascade VPN
-        uses: rohittp0/wiregaurd@v2
+        uses: Jenin82/wiregaurd@v3
         with:
           config: ${{ secrets.WG_CONFIG_BASE64 }}
 
