@@ -35,7 +35,7 @@ def apps_metadata(
     client: AppStoreClient,
     group_name: str,
     app_ids: List[str] = None
-) -> Iterator[dlt.Resource]:
+):
     """
     Extract app metadata from App Store Connect.
     
@@ -81,7 +81,7 @@ def app_info(
     app_id: str,
     app_name: str,
     group_name: str
-) -> Iterator[dlt.Resource]:
+):
     """
     Extract detailed app information including localizations.
     
@@ -115,7 +115,8 @@ def app_info(
                 yield info
                 
         except Exception as e:
-            logging.error(f"Error fetching app info for {app_name}: {e}")
+            body = getattr(getattr(e, "response", None), "text", "")
+            logging.error(f"Error fetching app info for {app_name}: {e} {body}")
     
     yield get_app_info
 
@@ -127,7 +128,7 @@ def customer_reviews(
     app_name: str,
     group_name: str,
     days_back: int = 7
-) -> Iterator[dlt.Resource]:
+):
     """
     Extract customer reviews for an app.
     
@@ -168,7 +169,8 @@ def customer_reviews(
                     yield review
                     
         except Exception as e:
-            logging.error(f"Error fetching reviews for {app_name}: {e}")
+            body = getattr(getattr(e, "response", None), "text", "")
+            logging.error(f"Error fetching reviews for {app_name}: {e} {body}")
     
     yield get_reviews
 
@@ -179,7 +181,7 @@ def app_store_versions(
     app_id: str,
     app_name: str,
     group_name: str
-) -> Iterator[dlt.Resource]:
+):
     """
     Extract app store versions and build information.
     
@@ -212,7 +214,8 @@ def app_store_versions(
                 yield version
                 
         except Exception as e:
-            logging.error(f"Error fetching versions for {app_name}: {e}")
+            body = getattr(getattr(e, "response", None), "text", "")
+            logging.error(f"Error fetching versions for {app_name}: {e} {body}")
     
     yield get_versions
 
@@ -224,7 +227,7 @@ def builds(
     app_name: str,
     group_name: str,
     days_back: int = 30
-) -> Iterator[dlt.Resource]:
+):
     """
     Extract build information for an app.
     
@@ -245,12 +248,8 @@ def builds(
         logging.info(f"Fetching builds for: {app_name} ({app_id}), last {days_back} days")
         
         try:
-            params = {
-                "sort": "-uploadedDate",
-                "limit": 200
-            }
-            
-            for build in client.get_paginated(f"/v1/apps/{app_id}/builds", params):
+            params = {"limit": 200, "filter[app]": app_id}
+            for build in client.get_paginated("/v1/builds", params):
                 build["_app_id"] = app_id
                 build["_app_name"] = app_name
                 build["_group_name"] = group_name
@@ -258,7 +257,8 @@ def builds(
                 yield build
                 
         except Exception as e:
-            logging.error(f"Error fetching builds for {app_name}: {e}")
+            body = getattr(getattr(e, "response", None), "text", "")
+            logging.error(f"Error fetching builds for {app_name}: {e} {body}")
     
     yield get_builds
 
@@ -269,7 +269,7 @@ def in_app_purchases(
     app_id: str,
     app_name: str,
     group_name: str
-) -> Iterator[dlt.Resource]:
+):
     """
     Extract in-app purchase information.
     
@@ -289,12 +289,9 @@ def in_app_purchases(
         logging.info(f"Fetching IAPs for: {app_name} ({app_id})")
         
         try:
-            params = {
-                "include": "iapPriceSchedule",
-                "limit": 200
-            }
-            
-            for iap in client.get_paginated(f"/v1/apps/{app_id}/inAppPurchases", params):
+            params = {"limit": 200, "filter[app]": app_id}
+            # Use IAP endpoint filtered by app
+            for iap in client.get_paginated("/v1/inAppPurchases", params):
                 iap["_app_id"] = app_id
                 iap["_app_name"] = app_name
                 iap["_group_name"] = group_name
@@ -302,7 +299,8 @@ def in_app_purchases(
                 yield iap
                 
         except Exception as e:
-            logging.error(f"Error fetching IAPs for {app_name}: {e}")
+            body = getattr(getattr(e, "response", None), "text", "")
+            logging.error(f"Error fetching IAPs for {app_name}: {e} {body}")
     
     yield get_iaps
 
@@ -313,7 +311,7 @@ def beta_testers(
     app_id: str,
     app_name: str,
     group_name: str
-) -> Iterator[dlt.Resource]:
+):
     """
     Extract beta tester information (TestFlight).
     
@@ -343,7 +341,12 @@ def beta_testers(
                 yield tester
                 
         except Exception as e:
-            logging.error(f"Error fetching beta testers for {app_name}: {e}")
+            # 403s are common if API key lacks TestFlight permissions; log at info to avoid noisy errors
+            if "403" in str(e):
+                logging.info(f"Skipping beta testers for {app_name}: insufficient permissions (403).")
+            else:
+                body = getattr(getattr(e, "response", None), "text", "")
+                logging.error(f"Error fetching beta testers for {app_name}: {e} {body}")
     
     yield get_beta_testers
 
@@ -355,5 +358,4 @@ all_sources = [
     app_store_versions,
     builds,
     in_app_purchases,
-    beta_testers,
 ]
