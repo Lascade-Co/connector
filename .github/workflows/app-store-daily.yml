@@ -1,58 +1,14 @@
 name: App Store Daily ETL
 
 on:
-  schedule:
-    - cron: '10 6 * * *'  # Daily at 6:10 UTC
   workflow_dispatch:
-    inputs:
-      group:
-        description: 'Group to run (d1, m4, d2, or all)'
-        required: false
-        default: 'all'
+  schedule:
+    - cron: "10 6 * * *"  # Every day at 06:10 UTC
 
 jobs:
-  app-store-etl:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        group: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.group == 'all' && fromJSON('["d1", "m4", "d2"]') || github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', github.event.inputs.group)) || fromJSON('["d1", "m4", "d2"]') }}
-      fail-fast: false
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-      
-      - name: Setup App Store configuration
-        env:
-          APP_STORE_CONFIG: ${{ secrets.APP_STORE_CONFIG }}
-        run: |
-          echo "$APP_STORE_CONFIG" > app_store.json
-      
-      - name: Setup dlt secrets
-        env:
-          DLT_SECRETS: ${{ secrets.DLT_SECRETS }}
-        run: |
-          mkdir -p .dlt
-          echo "$DLT_SECRETS" > .dlt/secrets.toml
-      
-      - name: Run App Store ETL for ${{ matrix.group }}
-        run: |
-          python main.py app_store ${{ matrix.group }}
-      
-      - name: Upload logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: app-store-logs-${{ matrix.group }}
-          path: |
-            *.log
-            .dlt/*.log
+  app_store_etl:
+    uses: ./.github/workflows/_reusable-etl.yml
+    with:
+      pipeline: app_store
+      group: d1
+    secrets: inherit
