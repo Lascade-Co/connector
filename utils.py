@@ -76,8 +76,9 @@ def get_for_group(group: str, platform: str) -> tuple[Dict[str, str], List[str |
     accounts_ids = data[group]["account_ids"]
 
     # For google_play, account_ids is a list of dicts with package_name and app_name
-    # For facebook/google, it's a list of account IDs
-    if platform == "google_play":
+    # For app_store, allow account_ids to be a list of dicts with id/app_name to keep names
+    # For facebook/google, it's a list of account ID strings
+    if platform == "google_play" or platform == "app_store":
         return data[group], accounts_ids
     else:
         return data[group], [str(aid) for aid in accounts_ids]

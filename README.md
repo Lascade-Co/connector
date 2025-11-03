@@ -54,6 +54,12 @@ This project implements ETL (Extract, Transform, Load) pipelines for Facebook Ad
 - **Data**: Install statistics, crash reports, ratings, user acquisition
 - **Source**: Google Cloud Storage exports
 
+### App Store Connect
+- **Schedule**: Daily at 6:10 UTC
+- **Groups**: `d1`, `m4`, `d2`
+- **Data**: App metadata, reviews, versions, builds, in-app purchases, TestFlight data
+- **Source**: App Store Connect API
+
 ## 🛠️ Development
 
 ### Running Pipelines
@@ -86,6 +92,16 @@ python main.py google_play d1  # Run group d1
 
 # With backfill (6 months)
 GOOGLE_PLAY_BACKFILL_MONTHS=6 python main.py google_play d1
+```
+
+#### App Store Connect
+```bash
+python main.py app_store d1    # Run group d1
+python main.py app_store m4    # Run group m4
+python main.py app_store d2    # Run group d2
+
+# With backfill (90 days)
+APPSTORE_BACKFILL_DAYS=90 python main.py app_store d1
 ```
 
 ### Configuration
@@ -133,6 +149,7 @@ GitHub Actions automatically run the ETL pipelines:
 - **GA4 ETL**: Daily at 1:30 UTC across all groups
 - **Google Ads ETL**: Daily at 3:10 UTC across all groups
 - **Google Play ETL**: Daily at 5:10 UTC (configure as needed)
+- **App Store ETL**: Daily at 6:10 UTC across all groups
 
 Workflows can also be triggered manually from the GitHub Actions tab.
 
