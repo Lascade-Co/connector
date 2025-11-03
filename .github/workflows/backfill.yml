@@ -12,6 +12,7 @@ on:
           - google_analytics
           - google
           - google_play
+          - app_store
       groups:
         description: "Groups to backfill (comma-separated, e.g., 'd1,m4,d2' or single like 'd1')"
         type: string
