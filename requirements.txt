@@ -15,3 +15,8 @@ google-analytics-data~=0.18.19
 
 # Google Play Console (GCS exports)
 google-cloud-storage~=3.4.1
+
+# App Store Connect API
+PyJWT~=2.10.1
+cryptography~=44.0.0
+requests~=2.32.3

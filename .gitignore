@@ -15,3 +15,13 @@ secrets.toml
 volumes/
 secrets/
 .vscode
+
+# Configuration files with credentials
+facebook.json
+google.json
+google_play.json
+app_store.json
+
+# Private keys
+*.p8
+*.pem
