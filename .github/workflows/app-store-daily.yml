@@ -1,4 +1,4 @@
-name: App Store ETL
+name: App Store Daily ETL
 
 on:
   schedule:
