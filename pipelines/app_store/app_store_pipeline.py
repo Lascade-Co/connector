@@ -34,9 +34,9 @@ def run():
     logging.info(f"Running App Store Connect pipeline for group: {group_name}")
     logging.info("Pulling apps: " + ", ".join([app.get("app_name", str(app)) for app in apps]))
 
-    # Check for backfill mode
+    # Check for backfill mode (only when env var is set to a non-empty value)
     days_back = get_days_back()
-    is_backfill = os.getenv("APPSTORE_BACKFILL_DAYS") is not None
+    is_backfill = bool(os.getenv("APPSTORE_BACKFILL_DAYS"))
     if is_backfill:
         logging.info(f"BACKFILL MODE: Using ONE_TIME_SNAPSHOT for {days_back} days of historical data")
     else:
