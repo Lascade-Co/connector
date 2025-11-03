@@ -1,21 +1,28 @@
 """
-App Store Connect data sources for dlt pipeline.
+App Store Connect Analytics Sources
+Extracts analytics metrics: impressions, downloads, revenue, conversion rates, etc.
 """
-import os
+import csv
+import io
 import logging
-from typing import Iterator, Dict, Any, List
-from datetime import datetime, timedelta
+import os
+import zipfile
+import gzip
+import requests
+from typing import Iterator, Dict, Any
 
 import dlt
-from dlt.sources.helpers import requests
+from dlt.common.typing import TDataItem
 
 from app_store.helpers import AppStoreClient
+
+# Default rolling window for daily runs
+ROLLING_DAYS = 7
 
 
 def get_days_back() -> int:
     """
-    Get the number of days to look back for data.
-    Checks APPSTORE_BACKFILL_DAYS environment variable.
+    Get days_back from environment variable for backfill, or use default.
     
     Returns:
         Number of days to look back (default: 7)
@@ -23,339 +30,255 @@ def get_days_back() -> int:
     backfill_days = os.getenv("APPSTORE_BACKFILL_DAYS")
     if backfill_days:
         try:
-            return int(backfill_days)
+            days_int = int(backfill_days)
+            if days_int > 0:
+                return days_int
         except ValueError:
-            logging.warning(f"Invalid APPSTORE_BACKFILL_DAYS value: {backfill_days}, using default 7")
-            return 7
-    return 7
+            pass
+    return ROLLING_DAYS
 
 
-@dlt.source
-def apps_metadata(
-    client: AppStoreClient,
-    group_name: str,
-    app_ids: List[str] = None
-):
+def get_existing_analytics_report_request(client: AppStoreClient, app_id: str, app_name: str, is_backfill: bool = False) -> str:
     """
-    Extract app metadata from App Store Connect.
+    Get existing analytics report request for an app.
+    Does NOT create new requests - only reads existing ones.
     
     Args:
         client: Authenticated AppStoreClient
-        group_name: Group identifier for tagging
-        app_ids: Optional list of specific app IDs to fetch
-    
-    Yields:
-        dlt.Resource for apps data
-    """
-    
-    @dlt.resource(name="apps", write_disposition="merge", primary_key="id")
-    def get_apps():
-        """Fetch all apps or specific apps."""
-        logging.info(f"Fetching apps metadata for group: {group_name}")
+        app_id: App Store Connect app ID (UUID)
+        app_name: Human-readable app name
+        is_backfill: If True, looks for ONE_TIME_SNAPSHOT; otherwise ONGOING
         
-        if app_ids:
-            # Fetch specific apps
-            for app_id in app_ids:
-                try:
-                    data = client.get(f"/v1/apps/{app_id}")
-                    app = data.get("data", {})
-                    if app:
-                        app["_group_name"] = group_name
-                        app["_loaded_at"] = datetime.utcnow().isoformat()
-                        yield app
-                except Exception as e:
-                    logging.error(f"Error fetching app {app_id}: {e}")
+    Returns:
+        Report request ID if found, None otherwise
+    """
+    try:
+        # Determine access type based on backfill mode
+        access_type = "ONE_TIME_SNAPSHOT" if is_backfill else "ONGOING"
+        
+        # Check if report request already exists
+        logging.info(f"Looking for existing {access_type} analytics report request for {app_name}")
+        response = client.get(f"/v1/apps/{app_id}/analyticsReportRequests", {
+            "filter[accessType]": access_type,
+            "limit": 1
+        })
+        
+        existing_requests = response.get("data", [])
+        if existing_requests:
+            request_id = existing_requests[0]["id"]
+            logging.info(f"Found existing {access_type} report request: {request_id}")
+            return request_id
+        
+        # No existing request found
+        logging.warning(f"No {access_type} report request found for {app_name}. Report requests must be created by an Admin user first.")
+        return None
+        
+    except Exception as e:
+        logging.error(f"Error checking for analytics report request for {app_name}: {e}")
+        return None
+
+
+def download_and_parse_report_segment(segment_url: str) -> Iterator[Dict[str, Any]]:
+    """
+    Download and parse a report segment (CSV/TSV in ZIP format).
+    
+    Args:
+        segment_url: URL to download the segment
+        
+    Yields:
+        Parsed rows as dictionaries
+    """
+    try:
+        response = requests.get(segment_url, timeout=60)
+        response.raise_for_status()
+
+        content = response.content
+        ctype = response.headers.get("Content-Type", "")
+        clen = response.headers.get("Content-Length", "")
+        logging.info(f"Segment download content-type={ctype} content-length={clen}")
+
+        # ZIP magic
+        if content[:4] == b"PK\x03\x04":
+            with zipfile.ZipFile(io.BytesIO(content)) as zip_file:
+                file_names = zip_file.namelist()
+                if not file_names:
+                    logging.warning("Empty ZIP file")
+                    return
+                data_file = file_names[0]
+                with zip_file.open(data_file) as f:
+                    text = f.read().decode("utf-8")
+        # GZIP magic
+        elif content[:2] == b"\x1f\x8b":
+            text = gzip.decompress(content).decode("utf-8")
         else:
-            # Fetch all apps
-            for app in client.get_paginated("/v1/apps"):
-                app["_group_name"] = group_name
-                app["_loaded_at"] = datetime.utcnow().isoformat()
-                yield app
-    
-    yield get_apps
+            # Assume plain text CSV/TSV
+            text = content.decode("utf-8")
+
+        first_line = text.split("\n", 1)[0]
+        delimiter = "\t" if "\t" in first_line else ","
+        reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+        for row in reader:
+            yield row
+
+    except Exception as e:
+        logging.error(f"Error downloading/parsing segment: {e}")
+        raise
 
 
-@dlt.source
-def app_info(
-    client: AppStoreClient,
-    app_id: str,
-    app_name: str,
-    group_name: str
-):
-    """
-    Extract detailed app information including localizations.
-    
-    Args:
-        client: Authenticated AppStoreClient
-        app_id: App Store app ID
-        app_name: Human-readable app name
-        group_name: Group identifier for tagging
-    
-    Yields:
-        dlt.Resource for app info data
-    """
-    
-    @dlt.resource(name="app_info", write_disposition="merge", primary_key="id")
-    def get_app_info():
-        """Fetch app info with localizations."""
-        logging.info(f"Fetching app info for: {app_name} ({app_id})")
-        
-        try:
-            # Get app info
-            params = {
-                "include": "appInfoLocalizations,primaryCategory,primarySubcategoryOne,primarySubcategoryTwo"
-            }
-            data = client.get(f"/v1/apps/{app_id}/appInfos", params)
-            
-            for info in data.get("data", []):
-                info["_app_id"] = app_id
-                info["_app_name"] = app_name
-                info["_group_name"] = group_name
-                info["_loaded_at"] = datetime.utcnow().isoformat()
-                yield info
-                
-        except Exception as e:
-            body = getattr(getattr(e, "response", None), "text", "")
-            logging.error(f"Error fetching app info for {app_name}: {e} {body}")
-    
-    yield get_app_info
-
-
-@dlt.source
-def customer_reviews(
+def fetch_analytics_reports(
     client: AppStoreClient,
     app_id: str,
     app_name: str,
     group_name: str,
-    days_back: int = 7
-):
+    category: str,
+    is_backfill: bool = False
+) -> Iterator[TDataItem]:
     """
-    Extract customer reviews for an app.
+    Shared helper to fetch analytics reports for a given category.
     
     Args:
         client: Authenticated AppStoreClient
-        app_id: App Store app ID
+        app_id: App Store Connect app ID (UUID)
         app_name: Human-readable app name
         group_name: Group identifier for tagging
-        days_back: Number of days to look back
-    
-    Yields:
-        dlt.Resource for customer reviews
-    """
-    
-    @dlt.resource(name="customer_reviews", write_disposition="append")
-    def get_reviews():
-        """Fetch customer reviews."""
-        logging.info(f"Fetching reviews for: {app_name} ({app_id}), last {days_back} days")
+        category: Report category (APP_STORE_ENGAGEMENT, APP_STORE_COMMERCE, APP_USAGE)
+        is_backfill: If True, uses ONE_TIME_SNAPSHOT for historical data
         
-        try:
-            # Calculate date filter
-            start_date = (datetime.utcnow() - timedelta(days=days_back)).isoformat()
+    Yields:
+        Parsed report rows with metadata
+    """
+    try:
+        # Get existing report request (does not create new ones)
+        report_request_id = get_existing_analytics_report_request(client, app_id, app_name, is_backfill)
+        
+        # Skip if no report request exists
+        if not report_request_id:
+            logging.info(f"Skipping {category} for {app_name} - no report request found. An Admin user must create report requests first.")
+            return
+        
+        # Get available reports filtered by category
+        reports_response = client.get(
+            f"/v1/analyticsReportRequests/{report_request_id}/reports",
+            {"filter[category]": category, "limit": 200}
+        )
+        
+        reports = reports_response.get("data", [])
+        if not reports:
+            logging.info(f"No {category} reports available yet for {app_name}")
+            return
+        
+        # Process each report
+        for report in reports:
+            report_id = report["id"]
+            report_name = report.get("attributes", {}).get("name", "Unknown")
             
-            params = {
-                "filter[territory]": "USA",  # Can be parameterized
-                "sort": "-createdDate",
-                "limit": 200
-            }
+            logging.info(f"Processing report: {report_name}")
             
-            for review in client.get_paginated(f"/v1/apps/{app_id}/customerReviews", params):
-                # Filter by date
-                created_date = review.get("attributes", {}).get("createdDate", "")
-                if created_date >= start_date:
-                    review["_app_id"] = app_id
-                    review["_app_name"] = app_name
-                    review["_group_name"] = group_name
-                    review["_loaded_at"] = datetime.utcnow().isoformat()
-                    yield review
+            # Get report instances (daily/weekly/monthly granularity)
+            instances_response = client.get(f"/v1/analyticsReports/{report_id}/instances", {"limit": 10})
+            instances = instances_response.get("data", [])
+            
+            for instance in instances:
+                instance_id = instance["id"]
+                granularity = instance.get("attributes", {}).get("granularity", "DAILY")
+                
+                # Get segments (download URLs)
+                segments_response = client.get(
+                    f"/v1/analyticsReportInstances/{instance_id}/segments",
+                    {"fields[analyticsReportSegments]": "url,checksum,sizeInBytes"}
+                )
+                
+                segments = segments_response.get("data", [])
+                for segment in segments:
+                    segment_url = segment.get("attributes", {}).get("url")
+                    if not segment_url:
+                        continue
                     
-        except Exception as e:
-            body = getattr(getattr(e, "response", None), "text", "")
-            logging.error(f"Error fetching reviews for {app_name}: {e} {body}")
-    
-    yield get_reviews
+                    # Download and parse segment data
+                    for row in download_and_parse_report_segment(segment_url):
+                        # Enrich with metadata
+                        row["_app_id"] = app_id
+                        row["_app_name"] = app_name
+                        row["_group_name"] = group_name
+                        row["_report_name"] = report_name
+                        row["_granularity"] = granularity
+                        yield row
+                        
+    except Exception as e:
+        body = getattr(getattr(e, "response", None), "text", "")
+        logging.error(f"Error fetching {category} for {app_name}: {e} {body}")
 
 
-@dlt.source
-def app_store_versions(
-    client: AppStoreClient,
-    app_id: str,
-    app_name: str,
-    group_name: str
-):
-    """
-    Extract app store versions and build information.
-    
-    Args:
-        client: Authenticated AppStoreClient
-        app_id: App Store app ID
-        app_name: Human-readable app name
-        group_name: Group identifier for tagging
-    
-    Yields:
-        dlt.Resource for app versions
-    """
-    
-    @dlt.resource(name="app_store_versions", write_disposition="merge", primary_key="id")
-    def get_versions():
-        """Fetch app store versions."""
-        logging.info(f"Fetching versions for: {app_name} ({app_id})")
-        
-        try:
-            params = {
-                "include": "build,appStoreVersionLocalizations",
-                "limit": 200
-            }
-            
-            for version in client.get_paginated(f"/v1/apps/{app_id}/appStoreVersions", params):
-                version["_app_id"] = app_id
-                version["_app_name"] = app_name
-                version["_group_name"] = group_name
-                version["_loaded_at"] = datetime.utcnow().isoformat()
-                yield version
-                
-        except Exception as e:
-            body = getattr(getattr(e, "response", None), "text", "")
-            logging.error(f"Error fetching versions for {app_name}: {e} {body}")
-    
-    yield get_versions
-
-
-@dlt.source
-def builds(
+@dlt.resource(name="app_store_engagement", write_disposition="append")
+def app_store_engagement(
     client: AppStoreClient,
     app_id: str,
     app_name: str,
     group_name: str,
-    days_back: int = 30
-):
+    is_backfill: bool = False
+) -> Iterator[TDataItem]:
     """
-    Extract build information for an app.
+    Extract App Store Engagement metrics: Impressions, Product Page Views, Conversion Rate.
     
-    Args:
-        client: Authenticated AppStoreClient
-        app_id: App Store app ID
-        app_name: Human-readable app name
-        group_name: Group identifier for tagging
-        days_back: Number of days to look back
-    
-    Yields:
-        dlt.Resource for builds
+    Metrics included:
+    - Impressions
+    - Product Page Views
+    - Total Downloads
+    - Conversion Rate
+    - App Units (downloads by source)
     """
-    
-    @dlt.resource(name="builds", write_disposition="merge", primary_key="id")
-    def get_builds():
-        """Fetch builds."""
-        logging.info(f"Fetching builds for: {app_name} ({app_id}), last {days_back} days")
-        
-        try:
-            params = {"limit": 200, "filter[app]": app_id}
-            for build in client.get_paginated("/v1/builds", params):
-                build["_app_id"] = app_id
-                build["_app_name"] = app_name
-                build["_group_name"] = group_name
-                build["_loaded_at"] = datetime.utcnow().isoformat()
-                yield build
-                
-        except Exception as e:
-            body = getattr(getattr(e, "response", None), "text", "")
-            logging.error(f"Error fetching builds for {app_name}: {e} {body}")
-    
-    yield get_builds
+    logging.info(f"Fetching App Store Engagement metrics for {app_name}")
+    return fetch_analytics_reports(client, app_id, app_name, group_name, "APP_STORE_ENGAGEMENT", is_backfill)
 
 
-@dlt.source
-def in_app_purchases(
+@dlt.resource(name="app_store_commerce", write_disposition="append")
+def app_store_commerce(
     client: AppStoreClient,
     app_id: str,
     app_name: str,
-    group_name: str
-):
+    group_name: str,
+    is_backfill: bool = False
+) -> Iterator[TDataItem]:
     """
-    Extract in-app purchase information.
+    Extract App Store Commerce metrics: Revenue, Sales, Paying Users.
     
-    Args:
-        client: Authenticated AppStoreClient
-        app_id: App Store app ID
-        app_name: Human-readable app name
-        group_name: Group identifier for tagging
-    
-    Yields:
-        dlt.Resource for in-app purchases
+    Metrics included:
+    - Total Revenue
+    - Paying Users
+    - Paying Sessions
+    - Revenue Per Paying User
+    - In-App Purchases
     """
-    
-    @dlt.resource(name="in_app_purchases", write_disposition="merge", primary_key="id")
-    def get_iaps():
-        """Fetch in-app purchases."""
-        logging.info(f"Fetching IAPs for: {app_name} ({app_id})")
-        
-        try:
-            params = {"limit": 200, "filter[app]": app_id}
-            # Use IAP endpoint filtered by app
-            for iap in client.get_paginated("/v1/inAppPurchases", params):
-                iap["_app_id"] = app_id
-                iap["_app_name"] = app_name
-                iap["_group_name"] = group_name
-                iap["_loaded_at"] = datetime.utcnow().isoformat()
-                yield iap
-                
-        except Exception as e:
-            body = getattr(getattr(e, "response", None), "text", "")
-            logging.error(f"Error fetching IAPs for {app_name}: {e} {body}")
-    
-    yield get_iaps
+    logging.info(f"Fetching App Store Commerce metrics for {app_name}")
+    return fetch_analytics_reports(client, app_id, app_name, group_name, "COMMERCE", is_backfill)
 
 
-@dlt.source
-def beta_testers(
+@dlt.resource(name="app_usage", write_disposition="append")
+def app_usage(
     client: AppStoreClient,
     app_id: str,
     app_name: str,
-    group_name: str
-):
+    group_name: str,
+    is_backfill: bool = False
+) -> Iterator[TDataItem]:
     """
-    Extract beta tester information (TestFlight).
+    Extract App Usage metrics: Active Devices, Installs, Sessions, Crashes.
     
-    Args:
-        client: Authenticated AppStoreClient
-        app_id: App Store app ID
-        app_name: Human-readable app name
-        group_name: Group identifier for tagging
-    
-    Yields:
-        dlt.Resource for beta testers
+    Metrics included:
+    - Active Devices
+    - Installations
+    - Deletions (Uninstalls)
+    - Sessions
+    - Active Last 30 Days
+    - Crashes
     """
-    
-    @dlt.resource(name="beta_testers", write_disposition="merge", primary_key="id")
-    def get_beta_testers():
-        """Fetch beta testers."""
-        logging.info(f"Fetching beta testers for: {app_name} ({app_id})")
-        
-        try:
-            params = {"limit": 200}
-            
-            for tester in client.get_paginated(f"/v1/apps/{app_id}/betaTesters", params):
-                tester["_app_id"] = app_id
-                tester["_app_name"] = app_name
-                tester["_group_name"] = group_name
-                tester["_loaded_at"] = datetime.utcnow().isoformat()
-                yield tester
-                
-        except Exception as e:
-            # 403s are common if API key lacks TestFlight permissions; log at info to avoid noisy errors
-            if "403" in str(e):
-                logging.info(f"Skipping beta testers for {app_name}: insufficient permissions (403).")
-            else:
-                body = getattr(getattr(e, "response", None), "text", "")
-                logging.error(f"Error fetching beta testers for {app_name}: {e} {body}")
-    
-    yield get_beta_testers
+    logging.info(f"Fetching App Usage metrics for {app_name}")
+    return fetch_analytics_reports(client, app_id, app_name, group_name, "APP_USAGE", is_backfill)
 
 
-# List of all source functions to run
+# List of all analytics sources
 all_sources = [
-    app_info,
-    customer_reviews,
-    app_store_versions,
-    builds,
-    in_app_purchases,
+    app_store_engagement,
+    app_store_commerce,
+    app_usage,
 ]

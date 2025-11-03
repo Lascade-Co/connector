@@ -22,7 +22,7 @@ def run():
         python main.py app_store <group_name>
         
     Environment Variables:
-        APPSTORE_BACKFILL_DAYS: Number of days to backfill (default: 7)
+        APPSTORE_BACKFILL_DAYS: Number of days to backfill (triggers ONE_TIME_SNAPSHOT mode)
         PIPELINE_NAME_SUFFIX: Optional suffix for pipeline name
     """
     if len(sys.argv) < 2 or not sys.argv[2]:
@@ -36,9 +36,11 @@ def run():
 
     # Check for backfill mode
     days_back = get_days_back()
-    backfill_days_env = os.getenv("APPSTORE_BACKFILL_DAYS")
-    if backfill_days_env:
-        logging.info(f"Backfill mode: pulling {days_back} days of data")
+    is_backfill = os.getenv("APPSTORE_BACKFILL_DAYS") is not None
+    if is_backfill:
+        logging.info(f"BACKFILL MODE: Using ONE_TIME_SNAPSHOT for {days_back} days of historical data")
+    else:
+        logging.info(f"DAILY MODE: Using ONGOING reports for last {days_back} days")
 
     # Create App Store Connect API client
     logging.info("Initializing App Store Connect API client...")
@@ -125,27 +127,17 @@ def run():
 
         logging.info(f"Adding sources for app: {app_name} ({asc_app_id})")
         
+        # Add analytics sources (engagement, commerce, usage)
         for source_func in all_sources:
-            # Some sources need days_back parameter
-            if source_func.__name__ in ["customer_reviews", "builds"]:
-                sources.append(
-                    source_func(
-                        client=client,
-                        app_id=asc_app_id,
-                        app_name=app_name,
-                        group_name=group_name,
-                        days_back=days_back
-                    )
+            sources.append(
+                source_func(
+                    client=client,
+                    app_id=asc_app_id,
+                    app_name=app_name,
+                    group_name=group_name,
+                    is_backfill=is_backfill
                 )
-            else:
-                sources.append(
-                    source_func(
-                        client=client,
-                        app_id=asc_app_id,
-                        app_name=app_name,
-                        group_name=group_name
-                    )
-                )
+            )
 
     logging.info(f"Running pipeline with {len(sources)} sources...")
     if not sources:

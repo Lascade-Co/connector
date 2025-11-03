@@ -124,6 +124,25 @@ class AppStoreClient:
         
         return response.json()
     
+    def post(self, endpoint: str, payload: Dict) -> Dict:
+        """
+        Make a POST request to the App Store Connect API.
+        
+        Args:
+            endpoint: API endpoint (e.g., "/v1/analyticsReportRequests")
+            payload: JSON payload to send
+        
+        Returns:
+            JSON response as dictionary
+        """
+        url = f"{self.BASE_URL}{endpoint}"
+        headers = self.get_headers()
+        
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        return response.json()
+    
     def get_paginated(self, endpoint: str, params: Optional[Dict] = None, limit: int = 200):
         """
         Get all pages of results from a paginated endpoint.
