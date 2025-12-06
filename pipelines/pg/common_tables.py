@@ -23,6 +23,7 @@ def stream_table(pg_table: str):
     if column_name and last_value:
         sql += f' WHERE "{column_name}" > %s'
         params += (last_value,)
+    sql += f' LIMIT 2000000'
     yield from fetch_batched(sql, params)
 
 
