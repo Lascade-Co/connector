@@ -185,7 +185,7 @@ def run_clickhouse_post_dlt_cleanup() -> None:
     cleanup_statements = (
         "delete from travel.travel___users_conversions where updated_at>=(select min(updated_at) from travel.travel___users_conversions where id in (select conversion_id from travel.travel___conversions_enriched group by conversion_id having count()>1));",
         "delete from travel.travel___conversions_enriched where conversion_id not in (select id from travel.travel___users_conversions);",
-        "delete from travel.travel___users_usersession where id >= (select min(session_id) from travel.travel___user_sessions_enriched where app_vertical is null);",
+        "delete from travel.travel___users_usersession where id >= (select min(session_id) from travel.travel___user_sessions_enriched where app_vertical is null having min(session_id)>0);",
         "delete from travel.travel___user_sessions_enriched where session_id not in (select id from travel.travel___users_usersession);",
     )
 
