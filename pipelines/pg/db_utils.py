@@ -1,4 +1,5 @@
 import logging
+import os
 
 import psycopg2
 import psycopg2.extras
@@ -174,3 +175,25 @@ def get_pipeline(name: str) -> dlt.Pipeline:
         destination="clickhouse",
         dataset_name=CH["database"],
     )
+
+
+def run_clickhouse_post_dlt_cleanup() -> None:
+    if os.getenv("SKIP_CH_CLEANUP"):
+        logging.info("Skipping ClickHouse cleanup (SKIP_CH_CLEANUP is set)")
+        return
+
+    cleanup_statements = (
+        "delete from travel.travel___users_conversions where updated_at>=(select min(updated_at) from travel.travel___users_conversions where id in (select conversion_id from travel.travel___conversions_enriched group by conversion_id having count()>1));",
+        "delete from travel.travel___conversions_enriched where conversion_id not in (select id from travel.travel___users_conversions);",
+        "delete from travel.travel___users_usersession where id >= (select min(session_id) from travel.travel___user_sessions_enriched where app_vertical is null);",
+        "delete from travel.travel___user_sessions_enriched where session_id not in (select id from travel.travel___users_usersession);",
+    )
+
+    client = get_ch_connection()
+    try:
+        logging.info("Running ClickHouse cleanup mutations...")
+        for stmt in cleanup_statements:
+            client.command(stmt)
+        logging.info("ClickHouse cleanup mutations finished")
+    finally:
+        client.close()
