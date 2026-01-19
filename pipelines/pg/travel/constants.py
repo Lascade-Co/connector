@@ -1,3 +1,5 @@
+LOG_TABLE = "server_logs_log"
+
 # Maps each table to the field used to track the last pulled record.
 TABLE_TO_FIELD_MAPPING = {
     "reports_report": "updated_at",
@@ -8,9 +10,8 @@ TABLE_TO_FIELD_MAPPING = {
     "users_provider": "updated_at",
     "users_providerservice": "updated_at",
     "users_usersession": "id",
-    "users_attribution": "id"
+    "users_attribution": "id",
+    LOG_TABLE: "created_at"
 }
 
 SELECTED_TABLES = list(TABLE_TO_FIELD_MAPPING.keys())
-
-LOG_TABLE = "server_logs_log"
