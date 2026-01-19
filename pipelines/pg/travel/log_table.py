@@ -24,6 +24,8 @@ def inline_ads():
     sql = f"SELECT * FROM {LOG_TABLE} WHERE name IN (%s, %s, %s, %s)"
     params = ad_types
 
+    logging.info(f"Last record: {column}={last_record}")
+
     if last_record:
         sql += f' AND "{column}" > %s ORDER BY "{column}"'
         params = (*ad_types, last_record)
