@@ -9,7 +9,10 @@ from clickhouse_connect.driver import Client
 from dlt.destinations.impl.clickhouse.configuration import ClickHouseCredentials
 from dlt.destinations.impl.postgres.configuration import PostgresCredentials
 
-from pipelines.pg.travel.constants import TABLE_TO_FIELD_MAPPING
+from pipelines.pg.travel.constants import TABLE_TO_FIELD_MAPPING as TRAVEL_MAPPING
+from pipelines.pg.dashboard.constants import TABLE_TO_FIELD_MAPPING as DASHBOARD_MAPPING
+
+TABLE_TO_FIELD_MAPPING = {**TRAVEL_MAPPING, **DASHBOARD_MAPPING}
 
 
 def get_pg_connection(source_name: str, real_dict=True) -> psycopg2.extensions.connection:
