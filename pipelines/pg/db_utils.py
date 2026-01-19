@@ -134,7 +134,8 @@ def _get_last_for_column(pg_table: str, column: str, destination: str) -> str | 
             return ch_client.query(
                 f"SELECT MAX({column}) as last FROM `{ch_client.database}`.`{destination}`"
             ).first_item["last"]
-        except Exception:
+        except Exception as e:
+            logging.warning(f"Could not get last value for column {column} in table {pg_table}. Full load may be performed. Error: {e}")
             pass
 
     ch_client.close()
