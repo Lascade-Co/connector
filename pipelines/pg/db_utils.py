@@ -175,7 +175,7 @@ def run_clickhouse_post_dlt_cleanup() -> None:
         "delete from travel.travel___user_sessions_enriched where session_id not in (select id from travel.travel___users_usersession);",
     )
 
-    client = get_ch_connection("pg_replication")
+    client = get_ch_connection("clickhouse")
     try:
         logging.info("Running ClickHouse cleanup mutations...")
         for stmt in cleanup_statements:
