@@ -1,4 +1,5 @@
 import logging
+import time
 
 import dlt
 
@@ -48,6 +49,7 @@ def inline_ads():
 
 def run() -> None:
     logging.info("Logs to ClickHouse pipeline started")
+    start = time.time()
 
     pipe = dlt.pipeline(
         pipeline_name="inline_ad_logs_to_click",
@@ -56,7 +58,7 @@ def run() -> None:
     )
     pipe.run(inline_ads())
 
-    logging.info("Run finished")
+    logging.info("Run finished in %.2f seconds", time.time() - start)
 
 
 if __name__ == "__main__":
