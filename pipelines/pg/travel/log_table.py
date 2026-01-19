@@ -25,7 +25,7 @@ def inline_ads():
     params = ad_types
 
     if last_record:
-        sql += f' AND "{column}" > %s'
+        sql += f' AND "{column}" > %s ORDER BY "{column}"'
         params = (*ad_types, last_record)
 
     for row in fetch_batched("pg_replication", sql, params):
