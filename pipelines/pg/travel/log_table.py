@@ -18,15 +18,15 @@ DESTINATION = "inline_ad_logs"
     primary_key="id",
 )
 def inline_ads():
-    _, last_created_at = get_last_record_info(LOG_TABLE, "clickhouse")
+    column, last_record = get_last_record_info(LOG_TABLE, "clickhouse")
 
     ad_types = ('InlineAdsViewSet.car', 'InlineAdsViewSet.flight', 'InlineAdsViewSet.hotel', 'ad_fetch')
     sql = f"SELECT * FROM {LOG_TABLE} WHERE name IN (%s, %s, %s, %s)"
     params = ad_types
 
-    if last_created_at:
-        sql += " AND created_at > %s"
-        params = (*ad_types, last_created_at)
+    if last_record:
+        sql += f' AND "{column}" > %s'
+        params = (*ad_types, last_record)
 
     for row in fetch_batched("pg_replication", sql, params):
         if row["name"].endswith("car"):
