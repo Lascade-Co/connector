@@ -18,7 +18,7 @@ DESTINATION = "inline_ad_logs"
     primary_key="id",
 )
 def inline_ads():
-    last_created_at = get_last_record_info(DESTINATION, "clickhouse")
+    _, last_created_at = get_last_record_info(LOG_TABLE, "clickhouse")
 
     ad_types = ('InlineAdsViewSet.car', 'InlineAdsViewSet.flight', 'InlineAdsViewSet.hotel', 'ad_fetch')
     sql = f"SELECT * FROM {LOG_TABLE} WHERE name IN (%s, %s, %s, %s)"
