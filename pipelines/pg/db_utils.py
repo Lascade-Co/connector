@@ -16,9 +16,10 @@ TABLE_TO_FIELD_MAPPING = {**TRAVEL_MAPPING, **DASHBOARD_MAPPING}
 
 
 def get_pg_connection(source_name: str, real_dict=True) -> psycopg2.extensions.connection:
+    """Return a connection to PostgreSQL."""
+
     creds = dlt.secrets.get(f"sources.{source_name}.credentials", PostgresCredentials)
 
-    """Return a connection to PostgreSQL."""
     pg_cfg = {
         "host": creds.host,
         "port": creds.port,
