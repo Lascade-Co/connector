@@ -34,7 +34,7 @@ def run(selected_tables: list[str], pipe_line_name: str, dataset_name: str, sour
         dataset_name=dataset_name,
     )
 
-    streams = [_stream_table(tbl, source, destination) for tbl in selected_tables]
+    streams = [_stream_table(pg_table=tbl, source=source, destination=destination) for tbl in selected_tables]
     pipe.run(streams)
 
     logging.info("Run finished")
