@@ -37,7 +37,7 @@ def get_pg_connection(source_name: str, real_dict=True) -> psycopg2.extensions.c
 
 def get_ch_connection(destination: str) -> Client:
     """Return a connection to ClickHouse."""
-    click_house = dlt.secrets.get(f"destinations.{destination}.credentials", ClickHouseCredentials)
+    click_house = dlt.secrets.get(f"destination.{destination}.credentials", ClickHouseCredentials)
     return get_client(
         host=click_house.host,
         port=click_house.http_port,
