@@ -121,19 +121,19 @@ def _get_destination_table_name(database: str, table: str) -> str:
 
 def _get_last_for_column(pg_table: str, column: str, destination: str) -> str | None:
     ch_client = get_ch_connection(destination)
-    destination = _get_destination_table_name(ch_client.database, pg_table)
+    destination_table = _get_destination_table_name(ch_client.database, pg_table)
 
     # Check if the destination table exists; if not, full initial load
     exists_count = ch_client.query(
         "SELECT count() as cnt FROM system.tables WHERE database = %s AND name = %s",
-        (ch_client.database, destination)
+        (ch_client.database, destination_table)
     ).first_item["cnt"]
 
     if exists_count > 0:
         # Get max(created_at) from ClickHouse (timezone preserved by driver)
         try:
             return ch_client.query(
-                f"SELECT MAX({column}) as last FROM `{ch_client.database}`.`{destination}`"
+                f"SELECT MAX({column}) as last FROM `{ch_client.database}`.`{destination_table}`"
             ).first_item["last"]
         except Exception as e:
             logging.warning(f"Could not get last value for column {column} in table {pg_table}. Full load may be performed. Error: {e}")
