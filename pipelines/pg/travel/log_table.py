@@ -3,7 +3,7 @@ import logging
 import dlt
 
 from pipelines.pg.travel.constants import LOG_TABLE
-from pipelines.pg.db_utils import fetch_batched, get_last_record_info
+from pipelines.pg.db_utils import fetch_batched, get_last_record_info, get_last_logs_record_info
 from pipelines.pg.travel.parsers import legacy_inline_ad, car_ads, flight_ads, hotel_ads
 from utils import setup_logging
 
@@ -18,7 +18,7 @@ DESTINATION = "inline_ad_logs"
     primary_key="id",
 )
 def inline_ads():
-    column, last_record = get_last_record_info(DESTINATION, "clickhouse")
+    column, last_record = get_last_logs_record_info(DESTINATION, "clickhouse")
 
     ad_types = ('InlineAdsViewSet.car', 'InlineAdsViewSet.flight', 'InlineAdsViewSet.hotel', 'ad_fetch')
     sql = f"SELECT * FROM {LOG_TABLE} WHERE name IN (%s, %s, %s, %s)"

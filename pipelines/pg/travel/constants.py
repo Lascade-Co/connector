@@ -11,8 +11,6 @@ TABLE_TO_FIELD_MAPPING = {
     "users_providerservice": "updated_at",
     "users_usersession": "id",
     "users_attribution": "id",
-    "inline_ad_logs": "created_at",
-    LOG_TABLE: "created_at",
 }
 
 SELECTED_TABLES = list(TABLE_TO_FIELD_MAPPING.keys())

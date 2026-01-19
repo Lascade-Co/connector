@@ -136,11 +136,17 @@ def _get_last_for_column(pg_table: str, column: str, destination: str) -> str | 
                 f"SELECT MAX({column}) as last FROM `{ch_client.database}`.`{destination_table}`"
             ).first_item["last"]
         except Exception as e:
-            logging.warning(f"Could not get last value for column {column} in table {pg_table}. Full load may be performed. Error: {e}")
+            logging.warning(
+                f"Could not get last value for column {column} in table {pg_table}. Full load may be performed. Error: {e}")
             pass
 
     ch_client.close()
     return None
+
+
+def get_last_logs_record_info(destination_table, destination: str) -> tuple[str, str | None]:
+    return "created_at", _get_last_for_column(destination_table, "created_at", destination)
+
 
 def get_last_record_info(pg_table: str, destination: str) -> tuple[str, str | None]:
     column_name = TABLE_TO_FIELD_MAPPING.get(pg_table, "id")
