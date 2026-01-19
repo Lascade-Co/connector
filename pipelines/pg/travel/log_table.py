@@ -2,7 +2,7 @@ import logging
 
 import dlt
 
-from constants import LOG_TABLE
+from pipelines.pg.travel.constants import LOG_TABLE
 from pipelines.pg.db_utils import fetch_batched, get_last_record_info
 from pipelines.pg.travel.parsers import legacy_inline_ad, car_ads, flight_ads, hotel_ads
 from utils import setup_logging
