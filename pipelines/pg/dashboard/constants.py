@@ -12,5 +12,3 @@ TABLE_TO_FIELD_MAPPING = {
 }
 
 SELECTED_TABLES = list(TABLE_TO_FIELD_MAPPING.keys())
-
-LOG_TABLE = "server_logs_log"

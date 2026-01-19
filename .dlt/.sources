@@ -2,8 +2,8 @@ engine_version: 1
 sources:
   pg_replication:
     is_dirty: false
-    last_commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
-    last_commit_timestamp: '2025-04-22T16:07:08+02:00'
+    last_commit_sha: c838272f958a36437f7e3297fd0bf497956f11a5
+    last_commit_timestamp: '2025-12-09T17:05:43+01:00'
     files:
       pg_replication/decoders.py:
         commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
@@ -14,21 +14,21 @@ sources:
         git_sha: ef2e2c734db1819cbf6217a094f0d8ad9f0910a2
         sha3_256: 6229db1a78066ec7583199dec1e5b82fd13957931ca32ba175e980dd76eb3d47
       pg_replication/README.md:
-        commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
-        git_sha: 637069183bdd730336e46cf6dfa8c76ab7b9687d
-        sha3_256: 6bfcb10a2e17023a431f48db8ee9277035156b6d4a0d0067c0ee033316d66c5a
+        commit_sha: c838272f958a36437f7e3297fd0bf497956f11a5
+        git_sha: 3f669160be076a1b095c63950338defd54a9f9a8
+        sha3_256: 8ea60b2d8925388ad58f291b53087ca60f277015a23b72b18177b47dc08241bf
       pg_replication/exceptions.py:
         commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
         git_sha: 2b2642777cd0ee58322721c5d0b88aa0b69e8fe3
         sha3_256: 921d9911a62a41485eac6450483785fb4545d13b0744964936b65a54f2b9ec3f
       pg_replication/schema_types.py:
-        commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
-        git_sha: 11b5f2c2a02c4604ef717cacdf9085500f6b3f87
-        sha3_256: 7233510e6ee69ec85b61577237cbf19cda3c59f7cbfd14455dadc45a4e98031a
+        commit_sha: c838272f958a36437f7e3297fd0bf497956f11a5
+        git_sha: c199407c659b0f890b0889bb6bc8cbb112bc6ea7
+        sha3_256: e5492a0494c8848422df020452571c7800247a4f58113986bc4df04aa7798a27
       pg_replication/helpers.py:
-        commit_sha: f3a8603bb5589fce0981eaf1d3f06c7dba74ef14
-        git_sha: 0f8d242df0bfc852ad5acf7da93e345c703032b6
-        sha3_256: 1a16f7ff6f5e91851f4d92083ad698bddb033132aaf19c0109b5e2db8bfb9583
+        commit_sha: c838272f958a36437f7e3297fd0bf497956f11a5
+        git_sha: 0c300ed00b52bce7eb4219bd096053727dbf3ae6
+        sha3_256: 3df4b796a18b7a5fe1ecae2eb1070b64eae0f7168121f8aa8326bc5c9c1f0ef8
     dlt_version_constraint: '>=1.0.0'
   facebook_ads:
     is_dirty: false

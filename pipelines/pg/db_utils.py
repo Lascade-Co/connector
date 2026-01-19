@@ -1,25 +1,27 @@
 import logging
 import os
 
+import dlt
 import psycopg2
 import psycopg2.extras
 from clickhouse_connect import get_client
-import dlt
 from clickhouse_connect.driver import Client
-from constants import TABLE_TO_FIELD_MAPPING
-from utils import _load_secrets
+from dlt.destinations.impl.clickhouse.configuration import ClickHouseCredentials
+from dlt.destinations.impl.postgres.configuration import PostgresCredentials
 
-PG, CH = _load_secrets()  # ← credentials ready for use
+from pipelines.pg.travel.constants import TABLE_TO_FIELD_MAPPING
 
 
-def get_pg_connection(real_dict=True) -> psycopg2.extensions.connection:
+def get_pg_connection(source_name: str, real_dict=True) -> psycopg2.extensions.connection:
+    creds = dlt.secrets.get(f"sources.{source_name}.credentials", PostgresCredentials)
+
     """Return a connection to PostgreSQL."""
     pg_cfg = {
-        "host": PG["host"],
-        "port": PG["port"],
-        "user": PG["username"],
-        "password": PG["password"],
-        "database": PG["database"],
+        "host": creds.host,
+        "port": creds.port,
+        "user": creds.username,
+        "password": creds.password,
+        "database": creds.database,
     }
     conn = psycopg2.connect(**pg_cfg, cursor_factory=psycopg2.extras.DictCursor)
 
@@ -29,21 +31,22 @@ def get_pg_connection(real_dict=True) -> psycopg2.extensions.connection:
     return conn
 
 
-def get_ch_connection() -> Client:
+def get_ch_connection(destination: str) -> Client:
     """Return a connection to ClickHouse."""
+    click_house = dlt.secrets.get(f"destinations.{destination}.credentials", ClickHouseCredentials)
     return get_client(
-        host=CH["host"],
-        port=CH["http_port"],
-        username=CH["username"],
-        password=CH["password"],
-        database=CH["database"],
-        secure=CH["secure"],
+        host=click_house.host,
+        port=click_house.http_port,
+        username=click_house.username,
+        password=click_house.password,
+        database=click_house.database,
+        secure=click_house.secure,
     )
 
 
-def _check_pg() -> None:
+def _check_pg(source_name) -> None:
     """Connectivity + logical-replication prerequisites."""
-    with get_pg_connection(False) as cx:
+    with get_pg_connection(source_name, False) as cx:
         cx.autocommit = True
         cur = cx.cursor()
 
@@ -70,23 +73,23 @@ def _check_pg() -> None:
         logging.info("✓ PostgreSQL connectivity and privileges verified")
 
 
-def _check_clickhouse() -> None:
-    """Connectivity + INSERT privilege to ClickHouse."""
-    client = get_ch_connection()
+def _check_clickhouse(destination: str) -> None:
+    """Connectivity and INSERT privilege to ClickHouse."""
+    client = get_ch_connection(destination)
 
     client.query("SELECT 1")
     logging.info("✓ ClickHouse connectivity verified")
 
     exists = client.query(
-        "EXISTS DATABASE {db:Identifier}", parameters={"db": CH["database"]}
+        "EXISTS DATABASE {db:Identifier}", parameters={"db": client.database}
     ).first_item
 
     if not exists:
         raise SystemExit(
-            f"Database {CH['database']} does not exist in ClickHouse, please create it"
+            f"Database {client.database} does not exist in ClickHouse, please create it"
         )
 
-    logging.info(f"✓ ClickHouse database '{CH['database']}' exists")
+    logging.info(f"✓ ClickHouse database '{client.database}' exists")
 
     client.command("CREATE TEMPORARY TABLE _permcheck (x UInt8) ENGINE = Memory;")
     logging.info("✓ Table creation privilege verified")
@@ -107,26 +110,26 @@ def _check_clickhouse() -> None:
     client.close()
 
 
-def _get_destination_table_name(table: str) -> str:
+def _get_destination_table_name(database: str, table: str) -> str:
     """Get the destination table name for the given source table name."""
-    return f"{CH['database']}___{table}"
+    return f"{database}___{table}"
 
 
-def _get_last_for_column(pg_table: str, column: str) -> str | None:
-    ch_client = get_ch_connection()
-    destination = _get_destination_table_name(pg_table)
+def _get_last_for_column(pg_table: str, column: str, destination: str) -> str | None:
+    ch_client = get_ch_connection(destination)
+    destination = _get_destination_table_name(ch_client.database, pg_table)
 
     # Check if the destination table exists; if not, full initial load
     exists_count = ch_client.query(
         "SELECT count() as cnt FROM system.tables WHERE database = %s AND name = %s",
-        (CH['database'], destination)
+        (ch_client.database, destination)
     ).first_item["cnt"]
 
     if exists_count > 0:
         # Get max(created_at) from ClickHouse (timezone preserved by driver)
         try:
             return ch_client.query(
-                f"SELECT MAX({column}) as last FROM `{CH['database']}`.`{destination}`"
+                f"SELECT MAX({column}) as last FROM `{ch_client.database}`.`{destination}`"
             ).first_item["last"]
         except Exception:
             pass
@@ -134,22 +137,13 @@ def _get_last_for_column(pg_table: str, column: str) -> str | None:
     ch_client.close()
     return None
 
-
-def get_last_id(pg_table: str) -> str | None:
-    return _get_last_for_column(pg_table, "id")
-
-
-def get_last_created_at(pg_table: str) -> str | None:
-    return _get_last_for_column(pg_table, "created_at")
-
-
-def get_last_record_info(pg_table: str) -> tuple[str, str | None]:
+def get_last_record_info(pg_table: str, destination: str) -> tuple[str, str | None]:
     column_name = TABLE_TO_FIELD_MAPPING.get(pg_table, "id")
-    return column_name, _get_last_for_column(pg_table, column_name)
+    return column_name, _get_last_for_column(pg_table, column_name, destination)
 
 
-def fetch_batched(query: str, params: tuple, batch_size: int = 4000):
-    with get_pg_connection() as conn:
+def fetch_batched(source_name: str, query: str, params: tuple, batch_size: int = 4000):
+    with get_pg_connection(source_name) as conn:
         # Batch fetching to limit memory footprint
         with conn.cursor() as cur:
             cur.itersize = batch_size
@@ -162,19 +156,11 @@ def fetch_batched(query: str, params: tuple, batch_size: int = 4000):
                     yield row
 
 
-def preflight() -> None:
+def preflight(source_name: str, destination: str) -> None:
     logging.info("Running environment validation …")
-    _check_pg()
-    _check_clickhouse()
+    _check_pg(source_name)
+    _check_clickhouse(destination)
     logging.info("Environment validation complete.\n")
-
-
-def get_pipeline(name: str) -> dlt.Pipeline:
-    return dlt.pipeline(
-        pipeline_name=name,
-        destination="clickhouse",
-        dataset_name=CH["database"],
-    )
 
 
 def run_clickhouse_post_dlt_cleanup() -> None:
@@ -189,7 +175,7 @@ def run_clickhouse_post_dlt_cleanup() -> None:
         "delete from travel.travel___user_sessions_enriched where session_id not in (select id from travel.travel___users_usersession);",
     )
 
-    client = get_ch_connection()
+    client = get_ch_connection("pg_replication")
     try:
         logging.info("Running ClickHouse cleanup mutations...")
         for stmt in cleanup_statements:
