@@ -3,6 +3,7 @@ LOG_TABLE = "server_logs_log"
 # Maps each table to the field used to track the last pulled record.
 TABLE_TO_FIELD_MAPPING = {
     "reports_report": "updated_at",
+    "reports_domain": "updated_at",
     "users_application": "updated_at",
     "users_appuser": "updated_at",
     "users_conversions": "updated_at",
