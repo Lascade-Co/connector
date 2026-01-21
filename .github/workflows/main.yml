@@ -1,8 +1,8 @@
-name: Run main.py every half hour
+name: Run main.py every 45 minutes
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/45 * * * *"
   workflow_dispatch:
 
 concurrency:
