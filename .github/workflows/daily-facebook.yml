@@ -3,13 +3,13 @@ name: Facebook Ads Daily ETL
 on:
   workflow_dispatch:
   schedule:
-    - cron: "10 1 * * *"  # Every day at 01:10 UTC
+    - cron: "10 1 * * *" # Every day at 01:10 UTC
 
 jobs:
   facebook_etl:
     strategy:
       matrix:
-        group: [d1, m4, d2]
+        group: [d1a, d1b, d1c, m4, d2]
       fail-fast: false
     uses: ./.github/workflows/_reusable-etl.yml
     with:

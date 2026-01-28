@@ -3,6 +3,9 @@
 from typing import Iterator, Sequence
 
 import dlt
+import logging
+import os
+import time
 from dlt.common import pendulum
 from dlt.common.typing import TDataItems
 from dlt.sources import DltResource
@@ -16,6 +19,7 @@ from .helpers import (
     execute_job,
     get_ads_account,
 )
+from .exceptions import InsightsJobTimeout
 from .settings import (
     DEFAULT_AD_FIELDS,
     DEFAULT_ADCREATIVE_FIELDS,
@@ -71,6 +75,30 @@ def facebook_ads_source(
     """
     account = get_ads_account(
         account_id, access_token, request_timeout, app_api_version
+    )
+
+    def _get_int_env(name: str, default: int) -> int:
+        raw = os.getenv(name)
+        if raw is None or raw == "":
+            return default
+        try:
+            return int(raw)
+        except ValueError:
+            logging.warning("Invalid %s=%r; defaulting to %d", name, raw, default)
+            return default
+
+    insights_max_wait_to_start_seconds = _get_int_env(
+        "FB_INSIGHTS_MAX_WAIT_TO_START_SECONDS", 5 * 60
+    )
+    insights_max_wait_to_finish_seconds = _get_int_env(
+        "FB_INSIGHTS_MAX_WAIT_TO_FINISH_SECONDS", 30 * 60
+    )
+    insights_max_async_sleep_seconds = _get_int_env(
+        "FB_INSIGHTS_MAX_ASYNC_SLEEP_SECONDS", 5 * 60
+    )
+    insights_max_retries = _get_int_env("FB_INSIGHTS_MAX_RETRIES", 2)
+    insights_retry_base_delay_seconds = _get_int_env(
+        "FB_INSIGHTS_RETRY_BASE_DELAY_SECONDS", 300
     )
 
     @dlt.resource(primary_key="id", write_disposition="replace")
@@ -200,7 +228,27 @@ def facebook_insights_source(
                     }
                 ],
             }
-            job = execute_job(account.get_insights(params=query, is_async=True))
+            job = None
+            for attempt in range(insights_max_retries + 1):
+                try:
+                    job = execute_job(
+                        account.get_insights(params=query, is_async=True),
+                        insights_max_wait_to_start_seconds=insights_max_wait_to_start_seconds,
+                        insights_max_wait_to_finish_seconds=insights_max_wait_to_finish_seconds,
+                        insights_max_async_sleep_seconds=insights_max_async_sleep_seconds,
+                    )
+                    break
+                except InsightsJobTimeout:
+                    if attempt >= insights_max_retries:
+                        raise
+                    delay = insights_retry_base_delay_seconds * (2**attempt)
+                    logging.warning(
+                        "Insights job timeout; retrying in %d seconds (attempt %d/%d)",
+                        delay,
+                        attempt + 1,
+                        insights_max_retries,
+                    )
+                    time.sleep(delay)
             yield list(map(process_report_item, job.get_result())) # noqa
             start_date = start_date.add(days=time_increment_days)
 
