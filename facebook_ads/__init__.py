@@ -46,13 +46,24 @@ from .utils import (
 from .utils import debug_access_token, get_long_lived_token
 
 
+def _get_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logging.warning("Invalid %s=%r; defaulting to %d", name, raw, default)
+        return default
+
+
 @dlt.source(name="facebook_ads")
 def facebook_ads_source(
-    account_id: str = dlt.config.value,
-    access_token: str = dlt.secrets.value,
-    chunk_size: int = 50,
-    request_timeout: float = 300.0,
-    app_api_version: str = None,
+        account_id: str = dlt.config.value,
+        access_token: str = dlt.secrets.value,
+        chunk_size: int = 50,
+        request_timeout: float = 300.0,
+        app_api_version: str = None,
 ) -> Sequence[DltResource]:
     """Returns a list of resources to load campaigns, ad sets, ads, creatives and ad leads data from Facebook Marketing API.
 
@@ -77,53 +88,29 @@ def facebook_ads_source(
         account_id, access_token, request_timeout, app_api_version
     )
 
-    def _get_int_env(name: str, default: int) -> int:
-        raw = os.getenv(name)
-        if raw is None or raw == "":
-            return default
-        try:
-            return int(raw)
-        except ValueError:
-            logging.warning("Invalid %s=%r; defaulting to %d", name, raw, default)
-            return default
-
-    insights_max_wait_to_start_seconds = _get_int_env(
-        "FB_INSIGHTS_MAX_WAIT_TO_START_SECONDS", 5 * 60
-    )
-    insights_max_wait_to_finish_seconds = _get_int_env(
-        "FB_INSIGHTS_MAX_WAIT_TO_FINISH_SECONDS", 30 * 60
-    )
-    insights_max_async_sleep_seconds = _get_int_env(
-        "FB_INSIGHTS_MAX_ASYNC_SLEEP_SECONDS", 5 * 60
-    )
-    insights_max_retries = _get_int_env("FB_INSIGHTS_MAX_RETRIES", 2)
-    insights_retry_base_delay_seconds = _get_int_env(
-        "FB_INSIGHTS_RETRY_BASE_DELAY_SECONDS", 300
-    )
-
     @dlt.resource(primary_key="id", write_disposition="replace")
     def campaigns(
-        fields: Sequence[str] = DEFAULT_CAMPAIGN_FIELDS, states: Sequence[str] = None
+            fields: Sequence[str] = DEFAULT_CAMPAIGN_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
         yield get_data_chunked(account.get_campaigns, fields, states, chunk_size)
 
     @dlt.resource(primary_key="id", write_disposition="replace")
     def ads(
-        fields: Sequence[str] = DEFAULT_AD_FIELDS, states: Sequence[str] = None
+            fields: Sequence[str] = DEFAULT_AD_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
         yield get_data_chunked(account.get_ads, fields, states, chunk_size)
 
     @dlt.resource(primary_key="id", write_disposition="replace")
     def ad_sets(
-        fields: Sequence[str] = DEFAULT_ADSET_FIELDS, states: Sequence[str] = None
+            fields: Sequence[str] = DEFAULT_ADSET_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
         yield get_data_chunked(account.get_ad_sets, fields, states, chunk_size)
 
     @dlt.transformer(primary_key="id", write_disposition="replace", selected=True)
     def leads(
-        items: TDataItems,
-        fields: Sequence[str] = DEFAULT_LEAD_FIELDS,
-        states: Sequence[str] = None,
+            items: TDataItems,
+            fields: Sequence[str] = DEFAULT_LEAD_FIELDS,
+            states: Sequence[str] = None,
     ) -> Iterator[TDataItems]:
         for item in items:
             ad = Ad(item["id"])
@@ -131,7 +118,7 @@ def facebook_ads_source(
 
     @dlt.resource(primary_key="id", write_disposition="replace")
     def ad_creatives(
-        fields: Sequence[str] = DEFAULT_ADCREATIVE_FIELDS, states: Sequence[str] = None
+            fields: Sequence[str] = DEFAULT_ADCREATIVE_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
         yield get_data_chunked(account.get_ad_creatives, fields, states, chunk_size)
 
@@ -140,19 +127,19 @@ def facebook_ads_source(
 
 @dlt.source(name="facebook_ads")
 def facebook_insights_source(
-    account_id: str = dlt.config.value,
-    access_token: str = dlt.secrets.value,
-    initial_load_past_days: int = 30,
-    fields: Sequence[str] = DEFAULT_INSIGHT_FIELDS,
-    attribution_window_days_lag: int = 7,
-    time_increment_days: int = 1,
-    breakdowns: TInsightsBreakdownOptions = "ads_insights",
-    action_breakdowns: Sequence[str] = ALL_ACTION_BREAKDOWNS,
-    level: TInsightsLevels = "ad",
-    action_attribution_windows: Sequence[str] = ALL_ACTION_ATTRIBUTION_WINDOWS,
-    batch_size: int = 50,
-    request_timeout: int = 300,
-    app_api_version: str = None,
+        account_id: str = dlt.config.value,
+        access_token: str = dlt.secrets.value,
+        initial_load_past_days: int = 30,
+        fields: Sequence[str] = DEFAULT_INSIGHT_FIELDS,
+        attribution_window_days_lag: int = 7,
+        time_increment_days: int = 1,
+        breakdowns: TInsightsBreakdownOptions = "ads_insights",
+        action_breakdowns: Sequence[str] = ALL_ACTION_BREAKDOWNS,
+        level: TInsightsLevels = "ad",
+        action_attribution_windows: Sequence[str] = ALL_ACTION_ATTRIBUTION_WINDOWS,
+        batch_size: int = 50,
+        request_timeout: int = 300,
+        app_api_version: str = None,
 ) -> DltResource:
     """Incrementally loads insight reports with defined granularity level, fields, breakdowns etc.
 
@@ -185,6 +172,20 @@ def facebook_insights_source(
         account_id, access_token, request_timeout, app_api_version
     )
 
+    insights_max_wait_to_start_seconds = _get_int_env(
+        "FB_INSIGHTS_MAX_WAIT_TO_START_SECONDS", 5 * 60
+    )
+    insights_max_wait_to_finish_seconds = _get_int_env(
+        "FB_INSIGHTS_MAX_WAIT_TO_FINISH_SECONDS", 30 * 60
+    )
+    insights_max_async_sleep_seconds = _get_int_env(
+        "FB_INSIGHTS_MAX_ASYNC_SLEEP_SECONDS", 5 * 60
+    )
+    insights_max_retries = _get_int_env("FB_INSIGHTS_MAX_RETRIES", 2)
+    insights_retry_base_delay_seconds = _get_int_env(
+        "FB_INSIGHTS_RETRY_BASE_DELAY_SECONDS", 300
+    )
+
     # we load with a defined lag
     initial_load_start_date = pendulum.today().subtract(days=initial_load_past_days)
     initial_load_start_date_str = initial_load_start_date.isoformat()
@@ -196,9 +197,9 @@ def facebook_insights_source(
         columns=INSIGHT_FIELDS_TYPES,
     )
     def facebook_insights(
-        date_start: dlt.sources.incremental[str] = dlt.sources.incremental(
-            "date_start", initial_value=initial_load_start_date_str
-        )
+            date_start: dlt.sources.incremental[str] = dlt.sources.incremental(
+                "date_start", initial_value=initial_load_start_date_str
+            )
     ) -> Iterator[TDataItems]:
         start_date = get_start_date(date_start, attribution_window_days_lag)
         end_date = pendulum.now()
@@ -241,7 +242,7 @@ def facebook_insights_source(
                 except InsightsJobTimeout:
                     if attempt >= insights_max_retries:
                         raise
-                    delay = insights_retry_base_delay_seconds * (2**attempt)
+                    delay = insights_retry_base_delay_seconds * (2 ** attempt)
                     logging.warning(
                         "Insights job timeout; retrying in %d seconds (attempt %d/%d)",
                         delay,
@@ -249,7 +250,7 @@ def facebook_insights_source(
                         insights_max_retries,
                     )
                     time.sleep(delay)
-            yield list(map(process_report_item, job.get_result())) # noqa
+            yield list(map(process_report_item, job.get_result()))  # noqa
             start_date = start_date.add(days=time_increment_days)
 
     # Attach a lightweight map to flatten complex array/object fields to scalar columns
