@@ -1,4 +1,4 @@
-name: Facebook Ads Daily ETL
+name: Facebook Ads Daily ETL - Batch A
 
 on:
   workflow_dispatch:
@@ -9,8 +9,9 @@ jobs:
   facebook_etl:
     strategy:
       matrix:
-        group: [d1a, m4, d2]
+        group: [d1a, m4a, d2a]
       fail-fast: false
+      max-parallel: 1
     uses: ./.github/workflows/_reusable-etl.yml
     with:
       pipeline: facebook
