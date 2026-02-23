@@ -54,13 +54,6 @@ def _check_pg(source_name) -> None:
         cx.autocommit = True
         cur = cx.cursor()
 
-        cur.execute("SHOW wal_level;")
-        wal_level = cur.fetchone()[0]
-        if wal_level.lower() != "logical":
-            raise SystemExit(
-                f"wal_level is '{wal_level}', must be 'logical' for logical decoding"
-            )
-
         cur.execute(
             """
             SELECT rolname, rolsuper, rolreplication
