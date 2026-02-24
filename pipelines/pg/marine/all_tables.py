@@ -1,15 +1,15 @@
 from pipelines.pg import stream_tables
-from pipelines.pg.dashboard.constants import TABLE_TO_FIELD_MAPPING
+from pipelines.pg.marine.constants import TABLE_TO_FIELD_MAPPING
 from utils import setup_logging
 
 
 def run() -> None:
     stream_tables.run(
         TABLE_TO_FIELD_MAPPING,
-        "dashboard_to_click",
-        "dashboard",
-        "pg_dashboard",
-        "clickhouse_dashboard"
+        "marine_to_click",
+        "marine",
+        "pg_marine",
+        "clickhouse_marine"
     )
 
 

@@ -11,6 +11,11 @@ concurrency:
 
 jobs:
   run-pipeline:
+    strategy:
+      matrix:
+        group: [ "travel", "dashboard" ]
+      fail-fast: false
+      max-parallel: 2
     runs-on: ubuntu-latest
 
     steps:
@@ -30,4 +35,4 @@ jobs:
         run: echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
 
       - name: Run main.py
-        run: python main.py
+        run: python main.py "db" "${{ matrix.group }}"

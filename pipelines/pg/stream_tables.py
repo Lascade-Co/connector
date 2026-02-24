@@ -5,16 +5,18 @@ import dlt
 
 from pipelines.pg.db_utils import get_last_record_info, fetch_batched
 
+TableMapping = dict[str, tuple[str, dict | None]]
 
 @dlt.resource(
     standalone=True,
+    columns=lambda args: args['columns'],
     name=lambda args: args['pg_table'],
     write_disposition="merge",
     merge_key="id",
     primary_key="id",
 )
-def _stream_table(pg_table: str, source: str, destination: str):
-    # Build source query with parameterized timestamp filter
+def _stream_table(pg_table: str, source: str, destination: str, columns: dict | None):
+    # Build a source query with a parameterized timestamp filter
     sql = f"SELECT * FROM {pg_table}"
     params = ()
     column_name, last_value = get_last_record_info(pg_table, destination)
@@ -28,7 +30,7 @@ def _stream_table(pg_table: str, source: str, destination: str):
     yield from fetch_batched(source, sql, params)
 
 
-def run(selected_tables: list[str], pipe_line_name: str, dataset_name: str, source: str, destination: str) -> None:
+def run(table_mapping: TableMapping, pipe_line_name: str, dataset_name: str, source: str, destination: str) -> None:
     logging.info(f"{pipe_line_name} pipeline started")
     start = time.time()
 
@@ -38,7 +40,10 @@ def run(selected_tables: list[str], pipe_line_name: str, dataset_name: str, sour
         dataset_name=dataset_name,
     )
 
-    streams = [_stream_table(pg_table=tbl, source=source, destination=destination) for tbl in selected_tables]
+    streams = []
+    for table, (_, columns) in table_mapping.items():
+        streams.append(_stream_table(pg_table=table, source=source, destination=destination, columns=columns))
+
     pipe.run(streams)
 
     logging.info("Run finished in %.2f seconds", time.time() - start)

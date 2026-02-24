@@ -12,9 +12,9 @@ from utils import setup_logging
 if __name__ == "__main__":
     setup_logging()
 
-    if len(sys.argv) == 1:
+    if sys.argv[1] == "db":
         logging.info("Starting pipelines...")
-        pg.run()
+        pg.run(sys.argv[2])
     elif sys.argv[1] == "facebook":
         facebook_ads_pipeline.run()
     elif sys.argv[1] == "google":
