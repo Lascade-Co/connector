@@ -9,13 +9,12 @@ TableMapping = dict[str, tuple[str, dict | None]]
 
 @dlt.resource(
     standalone=True,
-    columns=lambda args: args['columns'],
     name=lambda args: args['pg_table'],
     write_disposition="merge",
     merge_key="id",
     primary_key="id",
 )
-def _stream_table(pg_table: str, source: str, destination: str, columns: dict | None):
+def _stream_table(pg_table: str, source: str, destination: str):
     # Build a source query with a parameterized timestamp filter
     sql = f"SELECT * FROM {pg_table}"
     params = ()
@@ -42,7 +41,10 @@ def run(table_mapping: TableMapping, pipe_line_name: str, dataset_name: str, sou
 
     streams = []
     for table, (_, columns) in table_mapping.items():
-        streams.append(_stream_table(pg_table=table, source=source, destination=destination, columns=columns))
+        resource = _stream_table(pg_table=table, source=source, destination=destination)
+        if columns:
+            resource.apply_hints(columns=columns)
+        streams.append(resource)
 
     pipe.run(streams)
 
