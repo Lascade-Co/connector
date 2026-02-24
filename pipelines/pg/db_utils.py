@@ -142,7 +142,7 @@ def get_last_logs_record_info(destination_table, destination: str) -> tuple[str,
 
 
 def get_last_record_info(pg_table: str, destination: str) -> tuple[str, str | None]:
-    column_name = TABLE_TO_FIELD_MAPPING.get(pg_table, "id")
+    column_name, _ = TABLE_TO_FIELD_MAPPING.get(pg_table, ("id", None))
     return column_name, _get_last_for_column(pg_table, column_name, destination)
 
 

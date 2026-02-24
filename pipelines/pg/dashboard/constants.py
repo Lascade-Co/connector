@@ -1,6 +1,6 @@
 # Maps each table to the field used to track the last pulled record.
 TABLE_TO_FIELD_MAPPING = {
-    "auth_user": ("id", {'map_json': {'data_type': 'text'}}),
+    "auth_user": ("id", None),
     "common_app": ("updated_at", None),
     "common_coupon": ("updated_at", None),
     "common_trackablepayload": ("created_at", None),
@@ -9,7 +9,7 @@ TABLE_TO_FIELD_MAPPING = {
     "travel_animator_annotation": ("id", None),
     "travel_animator_annotationmedia": ("id", None),
     "travel_animator_glbfile": ("id", None),
-    "travel_animator_map": ("updated_at", None),
+    "travel_animator_map": ("updated_at", {'map_json': {'data_type': 'json'}}),
     "travel_animator_marker": ("id", None),
     "travel_animator_routepoint": ("updated_at", None),
     "travel_animator_savedroute": ("updated_at", None),
