@@ -53,6 +53,6 @@ def run(table_mapping: TableMapping, pipe_line_name: str, dataset_name: str, sou
             resource.apply_hints(columns=columns)
         streams.append(resource)
 
-    pipe.run(streams)
+    pipe.run(streams, refresh="drop_sources")
 
     logging.info("Run finished in %.2f seconds", time.time() - start)
