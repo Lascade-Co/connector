@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 
@@ -7,6 +8,7 @@ from pipelines.pg.db_utils import get_last_record_info, fetch_batched
 
 TableMapping = dict[str, tuple[str, dict | None]]
 
+
 @dlt.resource(
     standalone=True,
     name=lambda args: args['pg_table'],
@@ -14,7 +16,7 @@ TableMapping = dict[str, tuple[str, dict | None]]
     merge_key="id",
     primary_key="id",
 )
-def _stream_table(pg_table: str, source: str, destination: str):
+def _stream_table(pg_table: str, source: str, destination: str, json_columns: list[str]):
     # Build a source query with a parameterized timestamp filter
     sql = f"SELECT * FROM {pg_table}"
     params = ()
@@ -26,7 +28,11 @@ def _stream_table(pg_table: str, source: str, destination: str):
 
     sql += f' ORDER BY "{column_name}" LIMIT 2000000'
 
-    yield from fetch_batched(source, sql, params)
+    for row in fetch_batched(source, sql, params):
+        for col in json_columns:
+            if col in row and isinstance(row[col], (dict, list)):
+                row[col] = json.dumps(row[col])
+        yield row
 
 
 def run(table_mapping: TableMapping, pipe_line_name: str, dataset_name: str, source: str, destination: str) -> None:
@@ -41,7 +47,8 @@ def run(table_mapping: TableMapping, pipe_line_name: str, dataset_name: str, sou
 
     streams = []
     for table, (_, columns) in table_mapping.items():
-        resource = _stream_table(pg_table=table, source=source, destination=destination)
+        json_columns = [col for col, spec in (columns or {}).items() if spec.get('data_type') == 'json']
+        resource = _stream_table(pg_table=table, source=source, destination=destination, json_columns=json_columns)
         if columns:
             resource.apply_hints(columns=columns)
         streams.append(resource)
