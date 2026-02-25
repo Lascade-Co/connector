@@ -10,7 +10,7 @@ def run(db: str) -> None:
         log_table.run()
         common_tables.run()
 
-        run_clickhouse_post_dlt_cleanup()
+        # run_clickhouse_post_dlt_cleanup()
     elif db == "dashboard":
         preflight("pg_dashboard", "clickhouse_dashboard")
         dashboard_all_tables.run()
