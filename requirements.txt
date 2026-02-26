@@ -8,7 +8,7 @@ clickhouse-connect~=0.8.17
 
 proto-plus~=1.26.1
 google-api-python-client~=2.169.0
-protobuf~=6.31.1
+protobuf~=6.33.5
 google-ads~=27.0.0
 
 google-analytics-data~=0.18.19
@@ -18,5 +18,5 @@ google-cloud-storage~=3.4.1
 
 # App Store Connect API
 PyJWT~=2.10.1
-cryptography~=44.0.0
+cryptography~=46.0.5
 requests~=2.32.3
