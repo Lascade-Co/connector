@@ -12,4 +12,6 @@ TABLE_TO_FIELD_MAPPING = {
     "users_providerservice": ("updated_at", None),
     "users_usersession": ("id", None),
     "users_attribution": ("id", None),
+    "users_emailinfo": ("updated_at", None),
+    "users_pushnotificationinfo": ("updated_at", None),
 }
