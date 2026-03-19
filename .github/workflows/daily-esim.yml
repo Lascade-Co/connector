@@ -1,0 +1,14 @@
+name: Hourly eSIM Analytics Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 * * * *"  # Every hour at :15
+
+jobs:
+  esim_etl:
+    uses: ./.github/workflows/_reusable-etl.yml
+    with:
+      pipeline: esim
+      group: default
+    secrets: inherit

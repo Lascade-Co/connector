@@ -7,6 +7,8 @@ from pipelines.google import google_ads_pipeline
 from pipelines.google_analytics import google_analytics_pipeline
 from pipelines.google_play import google_play_pipeline
 from pipelines.app_store import app_store_pipeline
+from pipelines.esim import esim_pipeline
+from pipelines.esim_facebook import esim_facebook_pipeline
 from utils import setup_logging
 
 if __name__ == "__main__":
@@ -26,3 +28,7 @@ if __name__ == "__main__":
         google_play_pipeline.run()
     elif sys.argv[1] == "app_store":
         app_store_pipeline.run()
+    elif sys.argv[1] == "esim":
+        esim_pipeline.run()
+    elif sys.argv[1] == "esim_facebook":
+        esim_facebook_pipeline.run()
