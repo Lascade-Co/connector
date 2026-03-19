@@ -13,6 +13,7 @@ on:
           - google
           - google_play
           - app_store
+          - esim_facebook
       groups:
         description: "Groups to backfill (comma-separated, e.g., 'd1,m4,d2' or single like 'd1')"
         type: string

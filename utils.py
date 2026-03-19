@@ -7,19 +7,11 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
-def get_for_group(group: str, platform: str) -> tuple[Dict[str, str], List[str | Dict[str, str]]]:
+def load_config(group: str, platform: str) -> Dict[str, Any]:
     """
-    Get configuration and account IDs for a specific group and platform.
-
-    Args:
-        group: Group name (e.g., 'd1', 'm4', 'd2')
-        platform: Platform name ('facebook', 'google', 'google_play')
-
-    Returns:
-        For facebook/google: (group_config, list of account ID strings)
-        For google_play: (group_config, list of app config dicts)
+    Load configuration for a group from secrets/<platform>.json.
+    Unlike get_for_group, does not assume account_ids exists.
     """
-    # check if secrets folder exists
     if Path("secrets").exists():
         secrets_path = Path("secrets") / f"{platform}.json"
     else:
@@ -34,15 +26,23 @@ def get_for_group(group: str, platform: str) -> tuple[Dict[str, str], List[str |
     if group not in data:
         raise SystemExit(f"Group '{group}' not found in {platform} secrets file.")
 
-    accounts_ids = data[group]["account_ids"]
+    return data[group]
 
-    # For google_play, account_ids is a list of dicts with package_name and app_name
-    # For app_store, allow account_ids to be a list of dicts with id/app_name to keep names
-    # For facebook/google, it's a list of account ID strings
-    if platform == "google_play" or platform == "app_store":
-        return data[group], accounts_ids
-    else:
-        return data[group], [str(aid) for aid in accounts_ids]
+
+def get_for_group(group: str, platform: str) -> tuple[Dict[str, str], List[str | Dict[str, str]]]:
+    """
+    Get configuration and account IDs for a specific group and platform.
+
+    Returns:
+        For facebook/google: (group_config, list of account ID strings)
+        For google_play/app_store: (group_config, list of app config dicts)
+    """
+    config = load_config(group, platform)
+    accounts_ids = config["account_ids"]
+
+    if platform in ("google_play", "app_store"):
+        return config, accounts_ids
+    return config, [str(aid) for aid in accounts_ids]
 
 
 def get(dictionary: Dict[str, Any], *keys: str | int, default: Any = None) -> Any:
