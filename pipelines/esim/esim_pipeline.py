@@ -4,6 +4,7 @@ import sys
 
 import dlt
 
+from pipelines.esim.manifest import fetch_manifest, parse_manifest
 from pipelines.esim.sources import esim_analytics
 from utils import load_config
 
@@ -17,6 +18,14 @@ def run() -> None:
 
     logging.info("Running esim Analytics Export pipeline for group: %s", group_name)
 
+    raw_datasets = fetch_manifest(base_url=config["base_url"], api_key=config["api_key"])
+    datasets = parse_manifest(raw_datasets)
+    logging.info(
+        "Discovered %d datasets: %s",
+        len(datasets),
+        ", ".join(dataset["name"] for dataset in datasets),
+    )
+
     suffix = os.getenv("PIPELINE_NAME_SUFFIX", "")
     pipeline = dlt.pipeline(
         pipeline_name=f"esim_analytics_{group_name}{suffix}",
@@ -28,6 +37,7 @@ def run() -> None:
         esim_analytics(
             base_url=config["base_url"],
             api_key=config["api_key"],
+            datasets=datasets,
         )
     )
     logging.info("Pipeline completed: %s", load_info)
