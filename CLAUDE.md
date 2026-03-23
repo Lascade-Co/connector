@@ -101,7 +101,7 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 ## eSIM Project Pipelines
 The esim project uses a separate ClickHouse database (`esim_db`) via the `clickhouse_esim` dlt destination.
 
-- **`pipelines/esim/`** — Analytics Export API pipeline. Consumes the esim-backend's `/internal/analytics/exports/` endpoints with keyset pagination. Datasets: users, user_merges, sessions, orders, order_line_items. Config in `secrets/esim.json`.
+- **`pipelines/esim/`** — Analytics Export API pipeline. Manifest-driven: fetches dataset config (watermark fields, strategies, endpoints) from the backend's `/internal/analytics/exports/manifest/` at runtime. Column types are auto-detected by dlt from the API response data. Config in `secrets/esim.json`.
 - **`pipelines/esim_facebook/`** — Facebook Ads pipeline for esim. Same pattern as `pipelines/facebook/` but targets `clickhouse_esim`. Config in `secrets/esim_facebook.json`. Uses `ESIM_FB_*` env vars.
 
 ## PostgreSQL Replication Pipeline
