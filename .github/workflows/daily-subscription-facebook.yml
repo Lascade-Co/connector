@@ -1,0 +1,19 @@
+name: Subscription Facebook Ads Daily ETL
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 0 * * *"
+
+jobs:
+  subscription_facebook_etl:
+    strategy:
+      matrix:
+        group: [ta1]
+      fail-fast: false
+      max-parallel: 1
+    uses: ./.github/workflows/_reusable-etl.yml
+    with:
+      pipeline: subscription_facebook
+      group: ${{ matrix.group }}
+    secrets: inherit
