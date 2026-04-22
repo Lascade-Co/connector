@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       pipeline:
-        description: "Pipeline name (facebook, google_analytics, google, google_play, app_store, esim, esim_facebook, subscription_facebook)"
+        description: "Pipeline name (facebook, google_analytics, google, google_play, app_store, esim, esim_facebook, subscription_facebook, subscription_google)"
         required: true
         type: string
       group:
@@ -51,6 +51,7 @@ jobs:
           ESIM_CONFIG: ${{ secrets.ESIM_CONFIG }}
           ESIM_FB_GROUPS: ${{ secrets.ESIM_FB_GROUPS }}
           SUB_FB_GROUPS: ${{ secrets.SUB_FB_GROUPS }}
+          SUB_GOOGLE_GROUPS: ${{ secrets.SUB_GOOGLE_GROUPS }}
         run: |
           mkdir -p secrets .dlt
           echo "$DLT_SECRETS" | base64 --decode > .dlt/secrets.toml
@@ -82,6 +83,9 @@ jobs:
             subscription_facebook)
               echo "$SUB_FB_GROUPS" | base64 --decode > secrets/subscription_facebook.json
               ;;
+            subscription_google)
+              echo "$SUB_GOOGLE_GROUPS" | base64 --decode > secrets/subscription_google.json
+              ;;
           esac
 
       - name: Run ETL pipeline for ${{ inputs.pipeline }} - ${{ inputs.group }}
@@ -97,6 +101,7 @@ jobs:
           APPSTORE_BACKFILL_DAYS: ${{ inputs.pipeline == 'app_store' && inputs.backfill_days || '' }}
           ESIM_FB_BACKFILL_DAYS: ${{ inputs.pipeline == 'esim_facebook' && inputs.backfill_days || '' }}
           SUB_FB_BACKFILL_DAYS: ${{ inputs.pipeline == 'subscription_facebook' && inputs.backfill_days || '' }}
+          SUB_GOOGLE_BACKFILL_DAYS: ${{ inputs.pipeline == 'subscription_google' && inputs.backfill_days || '' }}
           # Set pipeline name suffix if provided
           PIPELINE_NAME_SUFFIX: ${{ inputs.pipeline_name_suffix }}
         run: |
