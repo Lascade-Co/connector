@@ -1,3 +1,4 @@
+# Pipeline for pulling Facebook Ads data for subscription apps.
 import sys, dlt
 import os
 import logging
