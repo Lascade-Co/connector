@@ -7,7 +7,6 @@ import time
 from pipelines.subscription_facebook.sources import all_sources
 from utils import get_for_group
 
-
 def run():
     if len(sys.argv) < 3 or not sys.argv[2]:
         raise ValueError("Please provide a group name as the second argument.")
@@ -21,7 +20,7 @@ def run():
     suffix = os.getenv("PIPELINE_NAME_SUFFIX", "")
     pipeline = dlt.pipeline(
         pipeline_name=f"subscription_fb_ads_{group_name}{suffix}",
-        destination=dlt.destinations.clickhouse(destination_name="clickhouse_subscription"),
+        destination=dlt.destinations.clickhouse(destination_name="clickhouse_dashboard"),
         dataset_name="subscription_fb"
     )
 

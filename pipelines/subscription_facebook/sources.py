@@ -44,6 +44,25 @@ def creatives_all(accounts, group_name: str):
 # METRIC FACT TABLE
 # ---------------------------------------------------------------------------
 
+def _subscribe_revenue(conversion_values):
+    # Mirrors the reference Django command: sum conversion_values where
+    # action_type == "subscribe_mobile_app" or label contains "subscribe".
+    if not isinstance(conversion_values, list):
+        return 0.0
+    total = 0.0
+    for item in conversion_values:
+        if not isinstance(item, dict):
+            continue
+        at = (item.get("action_type") or "").lower()
+        label = (item.get("label") or "").lower()
+        if at == "subscribe_mobile_app" or "subscribe" in label:
+            try:
+                total += float(item.get("value") or 0.0)
+            except (TypeError, ValueError):
+                continue
+    return round(total, 4)
+
+
 @dlt.resource(
     name="insights",
     primary_key=["account_id", "date_start", "ad_id"],
@@ -54,6 +73,7 @@ def insights_all(accounts, group_name: str):
         for r in insights_src(cred):
             r["account_id"] = cred["account_id"]
             r["managing_system"] = group_name
+            r["subscription_revenue"] = _subscribe_revenue(r.get("conversion_values"))
             yield r
 
 # ---------------------------------------------------------------------------

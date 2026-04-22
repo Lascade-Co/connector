@@ -1,5 +1,9 @@
 from facebook_ads import facebook_ads_source, facebook_insights_source
+from facebook_ads.settings import DEFAULT_INSIGHT_FIELDS
 import os
+
+# Pull conversions + conversion_values too, so we can compute subscription revenue.
+INSIGHT_FIELDS = DEFAULT_INSIGHT_FIELDS + ("conversions", "conversion_values")
 
 
 def ads_src(cred):  # structure data
@@ -21,5 +25,6 @@ def insights_src(cred):  # metrics
         account_id=cred["account_id"],
         access_token=cred["token"],
         attribution_window_days_lag=7,
+        fields=INSIGHT_FIELDS,
         **kwargs,
     )
