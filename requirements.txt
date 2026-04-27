@@ -17,6 +17,6 @@ google-analytics-data~=0.18.19
 google-cloud-storage~=3.4.1
 
 # App Store Connect API
-PyJWT~=2.10.1
+PyJWT~=2.12.0
 cryptography~=46.0.5
-requests~=2.32.3
+requests~=2.33.0
