@@ -236,6 +236,7 @@ SELECTED_CPA_TYPES = (
     "omni_purchase",
     "link_click",
     "omni_app_install",
+    "omni_complete_registration",
 )
 
 SELECTED_PURCHASE_ROAS_TYPES = (
