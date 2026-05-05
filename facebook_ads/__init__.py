@@ -122,14 +122,16 @@ def facebook_ads_source(
     def ad_creatives(
             fields: Sequence[str] = DEFAULT_ADCREATIVE_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
-        # ad_creatives carries heavy fields (e.g. object_story_spec); the default
-        # chunk_size of 50 routinely trips Meta's "reduce the amount of data"
-        # error (code 1 / HTTP 500). Start smaller and shrink adaptively on
-        # failure. Override via FB_ADCREATIVES_CHUNK_SIZE.
+        # ad_creatives carries heavy fields (e.g. object_story_spec) that can
+        # trip Meta's "reduce the amount of data" error (code 1 / HTTP 500).
+        # Default to the source chunk_size to keep call volume low (rate-limit
+        # safe); shrink adaptively only when that error actually fires.
+        # Override the start size via FB_ADCREATIVES_CHUNK_SIZE.
         # Clamp to >= 1: a zero/negative override would silently emit nothing or
         # break itertools.islice in get_data_chunked.
-        configured = max(1, _get_int_env("FB_ADCREATIVES_CHUNK_SIZE", 10))
-        initial_size = min(configured, max(1, chunk_size))
+        default_size = max(1, chunk_size)
+        configured = max(1, _get_int_env("FB_ADCREATIVES_CHUNK_SIZE", default_size))
+        initial_size = min(configured, default_size)
         # summary=false drops the paging summary block we don't use, trimming payload.
         extra_params = {"summary": "false"}
         current_size = initial_size
