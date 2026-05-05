@@ -19,6 +19,8 @@ from .helpers import (
     execute_job,
     get_ads_account,
 )
+from facebook_business.exceptions import FacebookRequestError
+
 from .exceptions import InsightsJobTimeout
 from .settings import (
     DEFAULT_AD_FIELDS,
@@ -120,7 +122,46 @@ def facebook_ads_source(
     def ad_creatives(
             fields: Sequence[str] = DEFAULT_ADCREATIVE_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
-        yield get_data_chunked(account.get_ad_creatives, fields, states, chunk_size)
+        # ad_creatives carries heavy fields (e.g. object_story_spec); the default
+        # chunk_size of 50 routinely trips Meta's "reduce the amount of data"
+        # error (code 1 / HTTP 500). Start smaller and shrink adaptively on
+        # failure. Override via FB_ADCREATIVES_CHUNK_SIZE.
+        # Clamp to >= 1: a zero/negative override would silently emit nothing or
+        # break itertools.islice in get_data_chunked.
+        configured = max(1, _get_int_env("FB_ADCREATIVES_CHUNK_SIZE", 10))
+        initial_size = min(configured, max(1, chunk_size))
+        # summary=false drops the paging summary block we don't use, trimming payload.
+        extra_params = {"summary": "false"}
+        current_size = initial_size
+        # On a shrink retry the SDK re-paginates from the first page; track ids
+        # already yielded so dlt does not see duplicates in the extract phase.
+        seen_ids: set = set()
+        while True:
+            try:
+                for chunk in get_data_chunked(
+                    account.get_ad_creatives, fields, states, current_size, extra_params
+                ):
+                    fresh = [it for it in chunk if it.get("id") not in seen_ids]
+                    if not fresh:
+                        continue
+                    seen_ids.update(it["id"] for it in fresh if it.get("id"))
+                    yield fresh
+                return
+            except FacebookRequestError as e:
+                code = e.api_error_code()
+                msg = (e.api_error_message() or "")
+                is_reduce_data = code == 1 and "reduce the amount of data" in msg.lower()
+                if not is_reduce_data or current_size <= 1:
+                    raise
+                new_size = max(1, current_size // 2)
+                logging.warning(
+                    "ad_creatives: Meta returned 'reduce data' (code 1); "
+                    "shrinking page size %d -> %d and retrying (yielded so far: %d)",
+                    current_size,
+                    new_size,
+                    len(seen_ids),
+                )
+                current_size = new_size
 
     return campaigns, ads, ad_sets, ad_creatives, ads | leads
 

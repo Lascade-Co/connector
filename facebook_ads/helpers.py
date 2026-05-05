@@ -174,12 +174,18 @@ def flatten_facebook_insights(item: DictStrAny) -> DictStrAny:
 
 
 def get_data_chunked(
-    method: TFbMethod, fields: Sequence[str], states: Sequence[str], chunk_size: int
+    method: TFbMethod,
+    fields: Sequence[str],
+    states: Sequence[str],
+    chunk_size: int,
+    extra_params: Optional[DictStrAny] = None,
 ) -> Iterator[TDataItems]:
     # add pagination and chunk into lists
     params: DictStrAny = {"limit": chunk_size}
     if states:
         params.update({"effective_status": states})
+    if extra_params:
+        params.update(extra_params)
     it: map[DictStrAny] = map(
         lambda c: c.export_all_data(), method(fields=fields, params=params)
     )
@@ -288,36 +294,63 @@ def get_ads_account(
 ) -> AdAccount:
     notify_on_token_expiration()
 
+    # FB error codes that should be retried (rate limits, transient backend, etc.)
+    _RETRYABLE_FB_CODES = frozenset(
+        (1, 2, 4, 17, 341, 32, 613, *range(80000, 80007), 800008, 800009, 80014)
+    )
+
     def retry_on_limit(response: requests.Response, exception: BaseException) -> bool:
-        try:
-            error = response.json()["error"]
-            code = error["code"]
-            message = error["message"]
-            should_retry = code in (
-                1,
-                2,
-                4,
-                17,
-                341,
-                32,
-                613,
-                *range(80000, 80007),
-                800008,
-                800009,
-                80014,
-            )
-            if should_retry:
-                logger.warning(
-                    "facebook_ads source will retry due to %s with error code %i"
-                    % (message, code)
-                )
-            return should_retry
-        except Exception:
+        # dlt invokes the predicate with response=None for exception-only
+        # failures (e.g. connection errors). Those are handled by the Client's
+        # exception-retry path, so abstain here.
+        if response is None:
             return False
+
+        # Parse the JSON error body if present; FB returns one for all
+        # well-formed errors.
+        error: Dict[str, Any] = {}
+        try:
+            error = response.json().get("error") or {}
+        except Exception:
+            error = {}
+
+        code = error.get("code")
+        message = error.get("message") or ""
+        is_5xx = 500 <= response.status_code < 600
+
+        # "Please reduce the amount of data..." is deterministic — retrying the
+        # same request won't help. Surface it immediately so the caller can
+        # shrink the page size / fields and retry adaptively.
+        if code == 1 and "reduce the amount of data" in message.lower():
+            return False
+
+        # Transient gateway errors with no parseable FB error code: still retry
+        # at the status level (preserves resilience for 502/503/timeouts that
+        # don't include a JSON error body).
+        if not error and is_5xx:
+            return True
+
+        should_retry = code in _RETRYABLE_FB_CODES
+        if should_retry:
+            logger.warning(
+                "facebook_ads source will retry due to %s with error code %s",
+                message,
+                code,
+            )
+        return should_retry
 
     retry_session = Client(
         request_timeout=request_timeout,
         raise_for_status=False,
+        # The predicate above is the sole arbiter for status-based retries: it
+        # explicitly handles 5xx (with or without an FB error body) and
+        # explicitly opts out of the deterministic "reduce data" case. Keeping
+        # 5xx in status_codes here would force 12 backoff attempts on that
+        # deterministic error before the ad_creatives caller can shrink the
+        # page size, since dlt's Client OR's status retries with the predicate.
+        # 429 is kept as a status-level fallback for rate-limit responses that
+        # lack a JSON body.
+        status_codes=(429,),
         retry_condition=retry_on_limit,
         request_max_attempts=12,
         request_backoff_factor=2,
