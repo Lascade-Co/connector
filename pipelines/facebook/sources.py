@@ -2,12 +2,13 @@ import logging
 import time
 
 import dlt
+from dlt.extract.exceptions import ResourceExtractionError
 from facebook_business.exceptions import FacebookRequestError
 
 from pipelines.facebook.raw_sources import ads_src, insights_src
 from pipelines.facebook.rate_limit import (
-    RATE_LIMIT_CODES,
     WAIT_CAP_SECONDS,
+    find_rate_limit_cause,
     parse_wait_seconds,
 )
 
@@ -54,34 +55,44 @@ def _stream_creatives(cred, group_name: str):
 def creatives_all(accounts, group_name: str):
     """Yield creatives across accounts with rate-limit-aware retry.
 
-    On a Meta ads-management rate-limit error we read the account's own
-    `estimated_time_to_regain_access` header. If it fits inside our cap we
-    sleep that long and retry the account once. If the estimate exceeds the
-    cap, or the retry also rate-limits, we log at ERROR level and move on so
-    items already yielded persist via the resource's merge disposition.
+    Iterating the inner `ads_src(cred).ad_creatives` DltResource routes
+    through dlt's pipe iterator, which wraps any non-dlt exception as
+    `ResourceExtractionError(...) from ex`. But `ads_src(cred)` itself
+    eagerly calls `get_ads_account` for credential lookup, which can raise
+    `FacebookRequestError` directly without wrapping. We catch both forms
+    and walk `__cause__` to find a rate-limit FB error; everything else
+    re-raises so genuine bugs stay loud.
 
-    Tradeoff: Meta paginates by an opaque cursor with no server-side ordering
-    guarantee, so we can't checkpoint mid-account — a run that consistently
-    rate-limits at page N will load pages 1..N and silently miss N+1+. This
-    is preferable to crashing the whole pipeline, but accounts repeatedly
-    hitting this should be triaged (split scheduling, lower fields, etc.).
+    On a rate-limit hit we read the account's own
+    `estimated_time_to_regain_access` header (via `parse_wait_seconds`). If
+    the estimate fits inside `WAIT_CAP_SECONDS` we sleep and retry the
+    account once; otherwise — or if the retry also rate-limits — we log at
+    ERROR and move on. Items already yielded persist via the merge
+    disposition, so the next scheduled run resumes by primary key.
+
+    Tradeoff: Meta paginates by an opaque cursor with no server-side
+    ordering guarantee, so we can't checkpoint mid-account — a run that
+    consistently rate-limits at page N will load pages 1..N and silently
+    miss N+1+. Accounts repeatedly hitting this should be triaged (split
+    scheduling, lower field set, etc.).
     """
     for cred in accounts:
         account_id = cred["account_id"]
         try:
             yield from _stream_creatives(cred, group_name)
             continue
-        except FacebookRequestError as e:
-            if e.api_error_code() not in RATE_LIMIT_CODES:
+        except (ResourceExtractionError, FacebookRequestError) as e:
+            fb = find_rate_limit_cause(e)
+            if fb is None:
                 raise
-            wait = parse_wait_seconds(e.http_headers(), default=300)
+            wait = parse_wait_seconds(fb.http_headers(), default=300)
             if wait > WAIT_CAP_SECONDS:
                 logging.error(
                     "ad_creatives: account %s rate-limited (code %s) with "
                     "estimated wait %ds exceeding %ds cap; skipping. "
                     "Already-yielded items persist via merge.",
                     account_id,
-                    e.api_error_code(),
+                    fb.api_error_code(),
                     wait,
                     WAIT_CAP_SECONDS,
                 )
@@ -90,22 +101,23 @@ def creatives_all(accounts, group_name: str):
                 "ad_creatives: rate-limited on account %s (code %s); "
                 "sleeping %ds before single retry",
                 account_id,
-                e.api_error_code(),
+                fb.api_error_code(),
                 wait,
             )
             time.sleep(wait)
 
         try:
             yield from _stream_creatives(cred, group_name)
-        except FacebookRequestError as e:
-            if e.api_error_code() not in RATE_LIMIT_CODES:
+        except (ResourceExtractionError, FacebookRequestError) as e:
+            fb = find_rate_limit_cause(e)
+            if fb is None:
                 raise
             logging.error(
                 "ad_creatives: account %s still rate-limited after retry "
                 "(code %s); already-yielded items persist via merge but "
                 "later pages were not loaded this run.",
                 account_id,
-                e.api_error_code(),
+                fb.api_error_code(),
             )
 
 # ---------------------------------------------------------------------------

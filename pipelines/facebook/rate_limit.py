@@ -8,6 +8,8 @@ exactly as long as needed instead of blindly backing off.
 import json
 from typing import Mapping, Optional
 
+from facebook_business.exceptions import FacebookRequestError
+
 
 # Meta error codes signaling app/account/user-level rate limiting that's
 # worth waiting out (vs. permanent failures we should surface immediately).
@@ -69,6 +71,26 @@ def _max_estimated_minutes(headers: Mapping[str, str]) -> Optional[int]:
             if isinstance(minutes, (int, float)) and minutes > 0:
                 best = max(best or 0, int(minutes))
     return best
+
+
+def find_rate_limit_cause(exc: BaseException) -> Optional[FacebookRequestError]:
+    """Walk the `__cause__` chain to find a rate-limit `FacebookRequestError`.
+
+    dlt wraps non-dlt exceptions raised from a resource generator in
+    `ResourceExtractionError(...) from ex`, so callers iterating a
+    `DltResource` never see the original FB error directly. Returns the
+    underlying `FacebookRequestError` if its code is in `RATE_LIMIT_CODES`,
+    otherwise None.
+    """
+    cur: Optional[BaseException] = exc
+    while cur is not None:
+        if (
+            isinstance(cur, FacebookRequestError)
+            and cur.api_error_code() in RATE_LIMIT_CODES
+        ):
+            return cur
+        cur = cur.__cause__
+    return None
 
 
 def parse_wait_seconds(
