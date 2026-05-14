@@ -213,6 +213,7 @@ FACEBOOK_INSIGHTS_RETENTION_PERIOD = 37  # months
 SELECTED_ACTION_TYPES = (
     "omni_app_install",
     "search",
+    "donate_total",
     "omni_purchase",
     "link_click",
     "omni_complete_registration",
@@ -221,6 +222,7 @@ SELECTED_ACTION_TYPES = (
 )
 
 SELECTED_ACTION_VALUE_TYPES = (
+    "donate_total",
     "omni_purchase",
 )
 
@@ -233,6 +235,7 @@ SELECTED_WEBSITE_CTR_TYPES = (
 SELECTED_CPA_TYPES = (
     # cost_per_action_type
     "search",
+    "donate_total",
     "omni_purchase",
     "link_click",
     "omni_app_install",
@@ -241,6 +244,7 @@ SELECTED_CPA_TYPES = (
 
 SELECTED_PURCHASE_ROAS_TYPES = (
     # purchase_roas
+    "donate_total",
     "omni_purchase",
 )
 
