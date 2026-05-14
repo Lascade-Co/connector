@@ -1,6 +1,10 @@
 from utils import get
 
 
+def _lower(value):
+    return value.lower() if isinstance(value, str) else value
+
+
 def parse_inline(ad: dict, row: dict):
     return {
         "id": f"{row['id']}-{ad.get('rank')}",
@@ -66,6 +70,40 @@ def hotel_ads(row: dict):
     adults = get(params, "adults")
 
     return inline_ad(row, check_in_date, check_out_date, origin, origin, None, adults)
+
+
+def ad_request_stats(row: dict):
+    name = row["name"]
+
+    if name == "ad_fetch":
+        data = row["data"]
+        country = get(data, "countryCode")
+        os = get(data, "OS")
+        device_type = get(data, "deviceType")
+        source = get(data, "source")
+        vertical = row.get("vertical")
+        items = get(data, "response", "inlineItems", default=[])
+    else:
+        kwargs = get(row, "data", "kwargs")
+        country = get(kwargs, "country")
+        os = get(kwargs, "os")
+        device_type = get(kwargs, "deviceType")
+        source = get(kwargs, "source")
+        vertical = name.rsplit(".", 1)[-1] if name.startswith("InlineAdsViewSet.") else row.get("vertical")
+        items = get(kwargs, "inlineItems", default=[])
+
+    return {
+        "id": row["id"],
+        "user_id": row["related_user_id"],
+        "name": name,
+        "vertical": _lower(vertical),
+        "country": _lower(country),
+        "os": _lower(os),
+        "device_type": _lower(device_type),
+        "source": _lower(source),
+        "ad_count": len(items),
+        "request_time": row["created_at"],
+    }
 
 
 def legacy_inline_ad(row: dict):
