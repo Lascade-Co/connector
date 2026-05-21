@@ -26,7 +26,7 @@ def _stream_table(pg_table: str, source: str, destination: str, json_columns: li
         sql += f' WHERE "{column_name}" > %s ORDER BY "{column_name}"'
         params += (last_value,)
 
-    sql += f' LIMIT 5000000'
+    sql += f' LIMIT 4000000'
 
     for row in fetch_batched(source, sql, params):
         for col in json_columns:
