@@ -68,7 +68,7 @@ def ad_request_stats():
         sql += f' AND "{column}" > %s ORDER BY "{column}"'
         params += (last_record,)
 
-    sql += ' LIMIT 2000000'
+    sql += ' LIMIT 5000000'
 
     for row in fetch_batched("pg_replication", sql, params):
         yield parse_request(row)

@@ -23,10 +23,10 @@ def _stream_table(pg_table: str, source: str, destination: str, json_columns: li
     column_name, last_value = get_last_record_info(pg_table, destination)
 
     if column_name and last_value:
-        sql += f' WHERE "{column_name}" > %s'
+        sql += f' WHERE "{column_name}" > %s ORDER BY "{column_name}"'
         params += (last_value,)
 
-    sql += f' ORDER BY "{column_name}" LIMIT 2000000'
+    sql += f' LIMIT 5000000'
 
     for row in fetch_batched(source, sql, params):
         for col in json_columns:
