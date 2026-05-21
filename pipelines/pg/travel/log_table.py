@@ -4,7 +4,7 @@ import time
 import dlt
 
 from pipelines.pg.travel.constants import LOG_TABLE
-from pipelines.pg.db_utils import fetch_batched, get_last_logs_record_info
+from pipelines.pg.db_utils import fetch_batched, get_last_logs_record_info, get_last_record_info
 from pipelines.pg.travel.parsers import ad_request_stats as parse_request, legacy_inline_ad, car_ads, flight_ads, hotel_ads
 from utils import setup_logging
 
@@ -56,7 +56,7 @@ def inline_ads():
     primary_key="id",
 )
 def ad_request_stats():
-    column, last_record = get_last_logs_record_info(AD_REQUEST_STATS_DESTINATION, "clickhouse")
+    column, last_record = get_last_record_info(AD_REQUEST_STATS_DESTINATION, "clickhouse")
 
     ad_types = ('InlineAdsViewSet.car', 'InlineAdsViewSet.flight', 'InlineAdsViewSet.hotel', 'ad_fetch')
     sql = f"SELECT * FROM {LOG_TABLE} WHERE name IN (%s, %s, %s, %s)"
@@ -66,7 +66,9 @@ def ad_request_stats():
 
     if last_record:
         sql += f' AND "{column}" > %s ORDER BY "{column}"'
-        params = (*ad_types, last_record)
+        params += (last_record,)
+
+    sql += ' LIMIT 2000000'
 
     for row in fetch_batched("pg_replication", sql, params):
         yield parse_request(row)
