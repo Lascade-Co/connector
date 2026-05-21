@@ -1,8 +1,10 @@
 from utils import get
 
 
-def _lower(value):
-    return value.lower() if isinstance(value, str) else value
+def _normalize_case(value, case="lower"):
+    if not isinstance(value, str):
+        return value
+    return value.upper() if case == "upper" else value.lower()
 
 
 def parse_inline(ad: dict, row: dict):
@@ -96,11 +98,11 @@ def ad_request_stats(row: dict):
         "id": row["id"],
         "user_id": row["related_user_id"],
         "name": name,
-        "vertical": _lower(vertical),
-        "country": _lower(country),
-        "os": _lower(os),
-        "device_type": _lower(device_type),
-        "source": _lower(source),
+        "vertical": _normalize_case(vertical),
+        "country": _normalize_case(country, "upper"),
+        "os": _normalize_case(os),
+        "device_type": _normalize_case(device_type),
+        "source": _normalize_case(source),
         "ad_count": len(items),
         "request_time": row["created_at"],
     }
