@@ -1,6 +1,12 @@
 from utils import get
 
 
+def _normalize_case(value, case="lower"):
+    if not isinstance(value, str):
+        return value
+    return value.upper() if case == "upper" else value.lower()
+
+
 def parse_inline(ad: dict, row: dict):
     return {
         "id": f"{row['id']}-{ad.get('rank')}",
@@ -66,6 +72,40 @@ def hotel_ads(row: dict):
     adults = get(params, "adults")
 
     return inline_ad(row, check_in_date, check_out_date, origin, origin, None, adults)
+
+
+def ad_request_stats(row: dict):
+    name = row["name"]
+
+    if name == "ad_fetch":
+        data = row["data"]
+        country = get(data, "countryCode")
+        os = get(data, "OS")
+        device_type = get(data, "deviceType")
+        source = get(data, "source")
+        vertical = row.get("vertical")
+        items = get(data, "response", "inlineItems", default=[])
+    else:
+        kwargs = get(row, "data", "kwargs")
+        country = get(kwargs, "country")
+        os = get(kwargs, "os")
+        device_type = get(kwargs, "deviceType")
+        source = get(kwargs, "source")
+        vertical = name.rsplit(".", 1)[-1] if name.startswith("InlineAdsViewSet.") else row.get("vertical")
+        items = get(kwargs, "inlineItems", default=[])
+
+    return {
+        "id": row["id"],
+        "user_id": row["related_user_id"],
+        "name": name,
+        "vertical": _normalize_case(vertical),
+        "country": _normalize_case(country, "upper"),
+        "os": _normalize_case(os),
+        "device_type": _normalize_case(device_type),
+        "source": _normalize_case(source),
+        "ad_count": len(items),
+        "request_time": row["created_at"],
+    }
 
 
 def legacy_inline_ad(row: dict):
