@@ -3,7 +3,7 @@ name: Subscription Facebook Ads Daily ETL
 on:
   workflow_dispatch:
   schedule:
-    - cron: "10 0 * * *"
+    - cron: "0 3 * * *" # Every day at 03:00 UTC (08:30 IST, after Facebook batch C)
 
 jobs:
   subscription_facebook_etl:

@@ -3,7 +3,7 @@ name: Google Ads Daily ETL
 on:
   workflow_dispatch:
   schedule:
-    - cron: "10 3 * * *"  # Every day at 03:10 UTC
+    - cron: "30 23 * * *"  # Every day at 23:30 UTC (05:00 IST next day, before Facebook batches; crosses UTC midnight)
 
 jobs:
   google_ads_d1:

@@ -3,7 +3,7 @@ name: Subscription Google Ads Daily ETL
 on:
   workflow_dispatch:
   schedule:
-    - cron: "20 0 * * *"  # 00:20 UTC, 10 min after subscription-facebook
+    - cron: "50 2 * * *"  # Every day at 02:50 UTC (08:20 IST)
 
 jobs:
   subscription_google_etl:

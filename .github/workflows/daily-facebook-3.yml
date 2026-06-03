@@ -3,7 +3,7 @@ name: Facebook Ads Daily ETL - Batch C
 on:
   workflow_dispatch:
   schedule:
-    - cron: "10 3 * * *" # Every day at 03:10 UTC
+    - cron: "0 2 * * *" # Every day at 02:00 UTC (07:30 IST)
 
 jobs:
   facebook_etl:
