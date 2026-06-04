@@ -39,7 +39,7 @@ def get_long_lived_token(
     client_secret: str = dlt.secrets.value,
 ) -> str:
     """Gets the long lived access token (60 days) from `access_token`. If arguments are not provides, `dlt` will inject them from configuration"""
-    exchange_url = f"https://graph.facebook.com/v13.0/oauth/access_token?grant_type=fb_exchange_token&client_id={client_id}&client_secret={client_secret}&fb_exchange_token={access_token}"
+    exchange_url = f"https://graph.facebook.com/v25.0/oauth/access_token?grant_type=fb_exchange_token&client_id={client_id}&client_secret={client_secret}&fb_exchange_token={access_token}"
     response = requests.get(exchange_url)
     data: Dict[str, str] = response.json()
 

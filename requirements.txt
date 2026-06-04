@@ -1,7 +1,7 @@
 dlt[clickhouse]>=1.0.0
 dlt[sql_database]>=1.0.0
 psycopg2-binary>=2.9.9
-facebook_business~=22.0.4
+facebook_business~=25.0.1
 humanize~=4.12.2
 pendulum~=3.1.0
 clickhouse-connect~=0.8.17
