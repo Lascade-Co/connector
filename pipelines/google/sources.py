@@ -74,7 +74,7 @@ def ads_metrics(
             "all_conversions": m.all_conversions,
             "all_conversions_value": m.all_conversions_value,
             # Additional metrics
-            "video_views": m.video_views,
+            "video_views": m.video_trueview_views,
         }
 
 

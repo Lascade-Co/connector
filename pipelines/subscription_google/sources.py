@@ -57,7 +57,7 @@ SELECT
     metrics.cost_per_conversion,
     metrics.all_conversions,
     metrics.all_conversions_value,
-    metrics.video_views
+    metrics.video_trueview_views
 FROM ad_group_ad
 WHERE segments.date BETWEEN '{start}' AND '{end}'
 """
@@ -117,7 +117,7 @@ def ads_metrics(
             "cost_per_conversion": m.cost_per_conversion,
             "all_conversions": m.all_conversions,
             "all_conversions_value": m.all_conversions_value,
-            "video_views": m.video_views,
+            "video_views": m.video_trueview_views,
             "installs": float(installs),
             "revenue": float(revenue),
         }

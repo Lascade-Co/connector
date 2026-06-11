@@ -1,14 +1,5 @@
 from google.ads.googleads.client import GoogleAdsClient
 
-CREATIVES_QUERY = """
-                  SELECT ad_group_ad.ad.id,
-                         ad_group_ad.ad.name,
-                         ad_group_ad.ad.type,
-                         ad_group_ad.ad.final_urls,
-                         customer.id,
-                  FROM ad_group_ad \
-                  """
-
 AD_METRICS_QUERY = """
                    SELECT
                        segments.date,
@@ -37,7 +28,7 @@ AD_METRICS_QUERY = """
                        metrics.cost_per_conversion,
                        metrics.all_conversions,
                        metrics.all_conversions_value,
-                       metrics.video_views
+                       metrics.video_trueview_views
                    FROM ad_group_ad
                    WHERE segments.date BETWEEN '{start}' AND '{end}' \
                    """
