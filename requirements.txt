@@ -9,7 +9,7 @@ clickhouse-connect~=0.8.17
 proto-plus~=1.26.1
 google-api-python-client~=2.169.0
 protobuf~=6.33.5
-google-ads~=27.0.0
+google-ads~=31.0.0
 
 google-analytics-data~=0.18.19
 
