@@ -86,7 +86,7 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 
 ## GitHub Actions Workflows
 - `.github/workflows/_reusable-etl.yml` — Shared job template all pipelines use
-- Daily schedules (UTC): Google Ads 23:30 (5:00 IST, runs before Facebook), Facebook batches A/B/C 0:00/1:00/2:00 (5:30/6:30/7:30 IST), Subscription Google 2:50 (8:20 IST), Subscription Facebook 3:00 (8:30 IST), GA4 4:30, Google Play 5:10, App Store 6:10, eSIM Facebook 8:30
+- Daily schedules (UTC): Facebook batches A/B/C 0:00/1:00/2:00 (5:30/6:30/7:30 IST), Subscription Google 2:50 (8:20 IST), Google Ads 3:00 (8:30 IST), Subscription Facebook 3:00 (8:30 IST), GA4 4:30, Google Play 5:10, App Store 6:10, eSIM Facebook 8:30
 - Hourly: eSIM Analytics API every hour at :15
 - `backfill.yml` — Manual dispatch workflow for historical data loads
 - Secrets are base64-encoded in GitHub (DLT_SECRETS, FB_GROUPS, GOOGLE_GROUPS, etc.)
