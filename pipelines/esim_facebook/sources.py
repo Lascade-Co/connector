@@ -48,6 +48,20 @@ def creatives_all(accounts, group_name: str):
     name="insights",
     primary_key=["account_id", "date_start", "ad_id"],
     write_disposition="merge",
+    columns={
+        "date_start":    {"data_type": "date"},
+        "date_stop":     {"data_type": "date"},
+        "reach":         {"data_type": "bigint"},
+        "clicks":        {"data_type": "bigint"},
+        "unique_clicks": {"data_type": "bigint"},
+        "impressions":   {"data_type": "bigint"},
+        "cpc":           {"data_type": "double"},
+        "cpm":           {"data_type": "double"},
+        "cpp":           {"data_type": "double"},
+        "ctr":           {"data_type": "double"},
+        "unique_ctr":    {"data_type": "double"},
+        "frequency":     {"data_type": "double"},
+    },
 )
 def insights_all(accounts, group_name: str):
     for cred in accounts:
