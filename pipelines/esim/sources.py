@@ -16,11 +16,13 @@ def make_incremental_resource(
     primary_key = config["primary_key"]
     write_disposition = config["write_disposition"]
     limit = config["default_limit"]
+    columns = config.get("columns")
 
     @dlt.resource(
         name=dataset_name,
         primary_key=primary_key,
         write_disposition=write_disposition,
+        columns=columns,
     )
     def resource(
         updated_after: dlt.sources.incremental[str] = dlt.sources.incremental(
@@ -48,10 +50,12 @@ def make_full_refresh_resource(
 ):
     write_disposition = config["write_disposition"]
     limit = config["default_limit"]
+    columns = config.get("columns")
 
     @dlt.resource(
         name=dataset_name,
         write_disposition=write_disposition,
+        columns=columns,
     )
     def resource() -> Iterator[dict[str, Any]]:
         yield from fetch_all_pages(

@@ -1,0 +1,17 @@
+name: Stage eSIM Order Analytics 1.2 Backfill
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: esim-order-fields-1-2-backfill
+  cancel-in-progress: false
+
+jobs:
+  stage_order_fields:
+    uses: ./.github/workflows/_reusable-etl.yml
+    with:
+      pipeline: esim_order_fields
+      group: default
+      pipeline_name_suffix: _backfill_${{ github.run_id }}
+    secrets: inherit

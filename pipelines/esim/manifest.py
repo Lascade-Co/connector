@@ -8,11 +8,13 @@ from pipelines.esim.constants import (
     DEFAULT_LIMIT,
     DEFAULT_LIMIT_MAX,
     DEFAULT_LIMIT_MIN,
+    DATASET_COLUMN_HINTS,
     MANIFEST_ENDPOINT,
     MAX_RETRIES,
     REQUEST_TIMEOUT,
     RETRY_BACKOFF_BASE,
     STRATEGY_TO_DISPOSITION,
+    SUPPORTED_SCHEMA_VERSIONS,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,6 +106,20 @@ def _resolve_default_limit(dataset: dict[str, Any]) -> int:
     return max(DEFAULT_LIMIT_MIN, min(value, DEFAULT_LIMIT_MAX))
 
 
+def _resolve_schema_version(dataset: dict[str, Any], dataset_name: str) -> str | None:
+    value = dataset.get("schema_version")
+    supported = SUPPORTED_SCHEMA_VERSIONS.get(dataset_name)
+    if supported is None:
+        return value
+    if value not in supported:
+        expected = ", ".join(sorted(supported))
+        raise ValueError(
+            f"Dataset '{dataset_name}' has unsupported schema_version '{value}'; "
+            f"expected one of: {expected}."
+        )
+    return value
+
+
 def _normalize_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
     original_name = _require_non_empty_string(dataset, "name", "<unknown>")
     strategy = _require_non_empty_string(dataset, "strategy", original_name)
@@ -115,6 +131,7 @@ def _normalize_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
     watermark_field = _resolve_watermark_field(dataset, strategy, original_name)
     is_full_refresh = strategy in {"full-refresh", "full-refresh-snapshot"}
     primary_key = None if is_full_refresh else _require_non_empty_string(dataset, "primary_key", original_name)
+    schema_version = _resolve_schema_version(dataset, normalized_name)
 
     resolved = {
         "name": normalized_name,
@@ -123,7 +140,8 @@ def _normalize_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
         "primary_key": primary_key,
         "write_disposition": STRATEGY_TO_DISPOSITION[strategy],
         "default_limit": _resolve_default_limit(dataset),
-        "schema_version": dataset.get("schema_version"),
+        "schema_version": schema_version,
+        "columns": DATASET_COLUMN_HINTS.get(normalized_name),
     }
     logger.info("Resolved manifest dataset config: %s", resolved)
     return resolved
