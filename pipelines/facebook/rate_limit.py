@@ -6,8 +6,11 @@ exactly as long as needed instead of blindly backing off.
 """
 
 import json
-from typing import Mapping, Optional
+import logging
+import time
+from typing import Callable, Iterable, Mapping, Optional
 
+from dlt.extract.exceptions import ResourceExtractionError
 from facebook_business.exceptions import FacebookRequestError
 
 
@@ -107,3 +110,73 @@ def parse_wait_seconds(
     minutes = _max_estimated_minutes(headers or {})
     seconds = minutes * 60 if minutes is not None else default
     return max(1, seconds)
+
+
+def stream_with_rate_limit_retry(
+    accounts: Iterable[dict],
+    group_name: str,
+    stream: Callable,
+    *,
+    resource_name: str,
+    on_partial: Optional[Callable[[str], None]] = None,
+    default_wait_seconds: int = 300,
+):
+    """Yield an account stream with one bounded Meta rate-limit retry.
+
+    Non-rate-limit failures remain fatal. If Meta's wait exceeds the cap or a
+    retry is throttled again, the affected account is skipped after notifying
+    ``on_partial``. Callers that need a machine-detectable incomplete run can
+    raise after their successful dlt loads have been committed.
+    """
+    for cred in accounts:
+        account_id = cred["account_id"]
+        try:
+            yield from stream(cred, group_name)
+            continue
+        except (ResourceExtractionError, FacebookRequestError) as exc:
+            facebook_error = find_rate_limit_cause(exc)
+            if facebook_error is None:
+                raise
+            wait_seconds = parse_wait_seconds(
+                facebook_error.http_headers(), default=default_wait_seconds
+            )
+            if wait_seconds > WAIT_CAP_SECONDS:
+                logging.error(
+                    "%s: account %s rate-limited (code %s) with estimated "
+                    "wait %ds exceeding %ds cap; skipping. Already-yielded "
+                    "items persist via merge.",
+                    resource_name,
+                    account_id,
+                    facebook_error.api_error_code(),
+                    wait_seconds,
+                    WAIT_CAP_SECONDS,
+                )
+                if on_partial is not None:
+                    on_partial(account_id)
+                continue
+            logging.warning(
+                "%s: rate-limited on account %s (code %s); sleeping %ds "
+                "before single retry",
+                resource_name,
+                account_id,
+                facebook_error.api_error_code(),
+                wait_seconds,
+            )
+            time.sleep(wait_seconds)
+
+        try:
+            yield from stream(cred, group_name)
+        except (ResourceExtractionError, FacebookRequestError) as exc:
+            facebook_error = find_rate_limit_cause(exc)
+            if facebook_error is None:
+                raise
+            logging.error(
+                "%s: account %s still rate-limited after retry (code %s); "
+                "already-yielded items persist via merge but later pages "
+                "were not loaded this run.",
+                resource_name,
+                account_id,
+                facebook_error.api_error_code(),
+            )
+            if on_partial is not None:
+                on_partial(account_id)

@@ -3,7 +3,11 @@ import os
 import logging
 import time
 
-from pipelines.esim_facebook.sources import all_sources
+from pipelines.esim_facebook.sources import (
+    all_sources,
+    get_partial_creative_accounts,
+    reset_partial_creative_accounts,
+)
 from utils import get_for_group
 
 
@@ -13,6 +17,7 @@ def run():
 
     group_name = sys.argv[2]
     group, accounts = get_for_group(group_name, "esim_facebook")
+    reset_partial_creative_accounts()
 
     logging.info(f"Running esim Facebook Ads pipeline for group: {group_name}")
     logging.info(f"Pulling accounts: {', '.join(accounts)}")
@@ -46,5 +51,12 @@ def run():
                 delay_seconds,
             )
             time.sleep(delay_seconds)
+
+    partial_accounts = get_partial_creative_accounts()
+    if partial_accounts:
+        raise RuntimeError(
+            "eSIM Facebook creatives were only partially loaded for account(s): "
+            + ", ".join(partial_accounts)
+        )
 
     logging.info("esim Facebook Ads pipeline completed successfully.")

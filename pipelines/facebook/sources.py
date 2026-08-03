@@ -1,16 +1,7 @@
-import logging
-import time
-
 import dlt
-from dlt.extract.exceptions import ResourceExtractionError
-from facebook_business.exceptions import FacebookRequestError
 
 from pipelines.facebook.raw_sources import ads_src, insights_src
-from pipelines.facebook.rate_limit import (
-    WAIT_CAP_SECONDS,
-    find_rate_limit_cause,
-    parse_wait_seconds,
-)
+from pipelines.facebook.rate_limit import stream_with_rate_limit_retry
 
 # ---------------------------------------------------------------------------
 # STRUCTURAL OBJECTS
@@ -76,49 +67,12 @@ def creatives_all(accounts, group_name: str):
     miss N+1+. Accounts repeatedly hitting this should be triaged (split
     scheduling, lower field set, etc.).
     """
-    for cred in accounts:
-        account_id = cred["account_id"]
-        try:
-            yield from _stream_creatives(cred, group_name)
-            continue
-        except (ResourceExtractionError, FacebookRequestError) as e:
-            fb = find_rate_limit_cause(e)
-            if fb is None:
-                raise
-            wait = parse_wait_seconds(fb.http_headers(), default=300)
-            if wait > WAIT_CAP_SECONDS:
-                logging.error(
-                    "ad_creatives: account %s rate-limited (code %s) with "
-                    "estimated wait %ds exceeding %ds cap; skipping. "
-                    "Already-yielded items persist via merge.",
-                    account_id,
-                    fb.api_error_code(),
-                    wait,
-                    WAIT_CAP_SECONDS,
-                )
-                continue
-            logging.warning(
-                "ad_creatives: rate-limited on account %s (code %s); "
-                "sleeping %ds before single retry",
-                account_id,
-                fb.api_error_code(),
-                wait,
-            )
-            time.sleep(wait)
-
-        try:
-            yield from _stream_creatives(cred, group_name)
-        except (ResourceExtractionError, FacebookRequestError) as e:
-            fb = find_rate_limit_cause(e)
-            if fb is None:
-                raise
-            logging.error(
-                "ad_creatives: account %s still rate-limited after retry "
-                "(code %s); already-yielded items persist via merge but "
-                "later pages were not loaded this run.",
-                account_id,
-                fb.api_error_code(),
-            )
+    yield from stream_with_rate_limit_retry(
+        accounts,
+        group_name,
+        _stream_creatives,
+        resource_name="ad_creatives",
+    )
 
 # ---------------------------------------------------------------------------
 # METRIC FACT TABLE

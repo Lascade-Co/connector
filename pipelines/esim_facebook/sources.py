@@ -1,5 +1,18 @@
 import dlt
+
+from pipelines.facebook.rate_limit import stream_with_rate_limit_retry
 from pipelines.esim_facebook.raw_sources import ads_src, insights_src
+
+
+_partial_creative_accounts: set[str] = set()
+
+
+def reset_partial_creative_accounts() -> None:
+    _partial_creative_accounts.clear()
+
+
+def get_partial_creative_accounts() -> tuple[str, ...]:
+    return tuple(sorted(_partial_creative_accounts))
 
 # ---------------------------------------------------------------------------
 # STRUCTURAL OBJECTS
@@ -32,13 +45,34 @@ def adsets_all(accounts, group_name: str):
             yield r
 
 
+def _stream_creatives(cred, group_name: str):
+    """Iterate creatives for one account and attach pipeline dimensions."""
+    for r in ads_src(cred).ad_creatives:
+        r["account_id"] = cred["account_id"]
+        r["managing_system"] = group_name
+        yield r
+
+
 @dlt.resource(name="ad_creatives", primary_key="id", write_disposition="merge")
 def creatives_all(accounts, group_name: str):
-    for cred in accounts:
-        for r in ads_src(cred).ad_creatives:
-            r["account_id"] = cred["account_id"]
-            r["managing_system"] = group_name
-            yield r
+    """Yield creatives with one Meta rate-limit-aware retry per account.
+
+    A wait reported by Meta is honored up to the shared 30-minute cap. Longer
+    waits and a second throttle mark only the affected account incomplete;
+    non-rate-limit failures still abort immediately.
+
+    Retrying restarts the account from its first page. Duplicate creatives are
+    deduplicated at the destination because this resource merges on creative
+    ID. The pipeline raises after all account loads if any account remains
+    incomplete, making the partial result visible to automation.
+    """
+    yield from stream_with_rate_limit_retry(
+        accounts,
+        group_name,
+        _stream_creatives,
+        resource_name="ad_creatives",
+        on_partial=_partial_creative_accounts.add,
+    )
 
 # ---------------------------------------------------------------------------
 # METRIC FACT TABLE

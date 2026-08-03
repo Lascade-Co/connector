@@ -103,7 +103,7 @@ The esim project uses a separate ClickHouse database (`esim_db`) via the `clickh
 
 - **`pipelines/esim/`** — Analytics Export API pipeline. Manifest-driven: fetches dataset config (watermark fields, strategies, endpoints) from the backend's `/internal/analytics/exports/manifest/` at runtime. Most column types are auto-detected; additive order fields use explicit hints. Config in `secrets/esim.json`.
 - Order analytics remain one row per order. Schema 1.2 adds only `subtotal_eur`, `profit_eur`, `item_count`, `distinct_plan_count`, and `is_cart`; use the staging-only order-fields backfill before a targeted ClickHouse mutation.
-- **`pipelines/esim_facebook/`** — Facebook Ads pipeline for esim. Same pattern as `pipelines/facebook/` but targets `clickhouse_esim`. Config in `secrets/esim_facebook.json`. Uses `ESIM_FB_*` env vars.
+- **`pipelines/esim_facebook/`** — Facebook Ads pipeline for esim. Same pattern as `pipelines/facebook/` but targets `clickhouse_esim`. Config in `secrets/esim_facebook.json`. Uses `ESIM_FB_*` env vars; keep its `ad_creatives` Meta rate-limit retry aligned with the shared Facebook helper.
 
 ## PostgreSQL Replication Pipeline
 `pipelines/pg/` handles logical replication from remote PostgreSQL sources into ClickHouse, used for dashboard and travel datasets. This is distinct from the API-based pipelines.
