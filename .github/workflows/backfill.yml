@@ -14,6 +14,7 @@ on:
           - google_play
           - app_store
           - esim_facebook
+          - subscription_facebook
       groups:
         description: "Groups to backfill (comma-separated, e.g., 'd1,m4,d2' or single like 'd1')"
         type: string
@@ -72,6 +73,7 @@ jobs:
       matrix:
         group: ${{ fromJSON(needs.prepare.outputs.groups_array) }}
       fail-fast: false
+      max-parallel: ${{ contains(inputs.pipeline, 'facebook') && 1 || 4 }}
     uses: ./.github/workflows/_reusable-etl.yml
     with:
       pipeline: ${{ inputs.pipeline }}

@@ -14,7 +14,7 @@ Multi-platform ETL pipeline system that extracts marketing/analytics data from 5
 ### Run a pipeline locally
 ```bash
 # Pattern: python main.py <platform> <group>
-python main.py facebook d1
+python main.py facebook d1c
 python main.py google g1
 python main.py google_analytics ga1
 python main.py google_play gp1
@@ -23,7 +23,7 @@ python main.py pg dashboard
 
 # eSIM pipelines (destination: clickhouse_esim → esim_db)
 python main.py esim default
-python main.py esim_facebook e1
+python main.py esim_facebook d1c
 ```
 
 ### Install dependencies
@@ -40,9 +40,9 @@ docker-compose --profile metabase up -d  # Include Metabase
 ### Backfill mode
 Set environment variables before running:
 ```bash
-FB_BACKFILL_DAYS=90 python main.py facebook d1
+FB_BACKFILL_DAYS=90 python main.py facebook d1c
 GA4_BACKFILL_DAYS=30 python main.py google_analytics ga1
-ESIM_FB_BACKFILL_DAYS=90 python main.py esim_facebook e1
+ESIM_FB_BACKFILL_DAYS=90 python main.py esim_facebook d1c
 ```
 
 ## Architecture
@@ -57,13 +57,13 @@ Each platform follows the same pattern:
 3. **Group config** (`secrets/<platform>.json`) — JSON files defining account groups with credentials/tokens
 
 ### Custom dlt Sources (Modified from dlt verified sources)
-- `facebook_ads/` — Custom Facebook source with insights flattening, async job handling, timeout/retry logic, action metrics decomposition
+- `facebook_ads/` — Custom Facebook source with incremental creative reconciliation, quota telemetry, bounded async Insights windows, and action metrics decomposition
 - `google_analytics/` — Custom GA4 source with helper utilities
 - `google_ads/` — Google Ads client integration
 
 ### Key Modules
 - `utils.py` — Shared helpers: `get_for_group()` (loads group config with account_ids), `load_config()` (loads group config without account_ids assumption), date normalization, logging setup
-- `facebook_ads/helpers.py` — Insights async job polling with exponential backoff, action metrics flattening
+- `facebook_ads/helpers.py` — Insights async job polling, explicitly API-bound account clients, and action metrics flattening
 - `facebook_ads/settings.py` — Field definitions, insight breakdowns, action type selections
 
 ### Group-Based Account Management
@@ -79,9 +79,11 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 - Dataset/table naming uses configurable separators
 
 ### Rate Limiting & Scaling
-- Sequential batch processing for Facebook (3 workflow batches: daily-facebook-1/2/3)
-- Configurable delays between accounts (`FB_ACCOUNT_DELAY_SECONDS`, default 600s)
-- Facebook Insights uses async jobs with configurable timeout (`FB_INSIGHTS_JOB_TIMEOUT_SECONDS`) and retry (`FB_INSIGHTS_MAX_RETRIES`) with exponential backoff
+- Facebook workflow groups sharing a credential family run sequentially; account delays default to zero
+- Insights use bounded async date windows and split incompatible unique metrics; quota failures surface without stacked retries
+- Creatives are incremental Monday-Saturday and fully reconciled Sunday or with manual workflow mode `full`
+- Facebook historical backfills load Insights only and serialize multi-group matrices; current-state resources use the daily/manual Facebook workflows
+- Local Facebook, eSIM Facebook, and subscription Facebook execution is restricted to exact group `d1c`; all other groups are GitHub Actions-only
 - Max parallel: 1 per batch in GitHub Actions
 
 ## GitHub Actions Workflows
@@ -103,7 +105,7 @@ The esim project uses a separate ClickHouse database (`esim_db`) via the `clickh
 
 - **`pipelines/esim/`** — Analytics Export API pipeline. Manifest-driven: fetches dataset config (watermark fields, strategies, endpoints) from the backend's `/internal/analytics/exports/manifest/` at runtime. Most column types are auto-detected; additive order fields use explicit hints. Config in `secrets/esim.json`.
 - Order analytics remain one row per order. Schema 1.2 adds only `subtotal_eur`, `profit_eur`, `item_count`, `distinct_plan_count`, and `is_cart`; use the staging-only order-fields backfill before a targeted ClickHouse mutation.
-- **`pipelines/esim_facebook/`** — Facebook Ads pipeline for esim. Same pattern as `pipelines/facebook/` but targets `clickhouse_esim`. Config in `secrets/esim_facebook.json`. Uses `ESIM_FB_*` env vars; keep its `ad_creatives` Meta rate-limit retry aligned with the shared Facebook helper.
+- **`pipelines/esim_facebook/`** — Facebook Ads pipeline for esim. Same pattern as `pipelines/facebook/` but targets `clickhouse_esim`. Config in `secrets/esim_facebook.json`. Uses `ESIM_FB_*` env vars and the shared creative quota guard.
 
 ## PostgreSQL Replication Pipeline
 `pipelines/pg/` handles logical replication from remote PostgreSQL sources into ClickHouse, used for dashboard and travel datasets. This is distinct from the API-based pipelines.

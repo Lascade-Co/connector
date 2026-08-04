@@ -8,7 +8,7 @@ from pipelines.esim_facebook.sources import (
     get_partial_creative_accounts,
     reset_partial_creative_accounts,
 )
-from utils import get_for_group
+from utils import enforce_local_facebook_group, get_for_group
 
 
 def run():
@@ -16,6 +16,7 @@ def run():
         raise ValueError("Please provide a group name as the second argument.")
 
     group_name = sys.argv[2]
+    enforce_local_facebook_group(group_name)
     group, accounts = get_for_group(group_name, "esim_facebook")
     reset_partial_creative_accounts()
 
@@ -29,21 +30,24 @@ def run():
         dataset_name="esim_fb"
     )
 
-    delay_env = os.getenv("ESIM_FB_ACCOUNT_DELAY_SECONDS", "600")
+    delay_env = os.getenv("ESIM_FB_ACCOUNT_DELAY_SECONDS", "0")
     try:
         delay_seconds = int(delay_env)
     except ValueError:
         logging.warning(
-            "Invalid ESIM_FB_ACCOUNT_DELAY_SECONDS=%r; defaulting to 600 seconds",
+            "Invalid ESIM_FB_ACCOUNT_DELAY_SECONDS=%r; defaulting to 0 seconds",
             delay_env,
         )
-        delay_seconds = 600
+        delay_seconds = 0
 
     for idx, account_id in enumerate(accounts):
         creds = [{"account_id": account_id, "token": group["token"]}]
         logging.info("Running esim Facebook Ads pipeline for account: %s", account_id)
-        # pipeline.run([all_sources[4](creds, group_name)]) # for insights only in local dev
-        pipeline.run([source(creds, group_name) for source in all_sources])
+        pipeline.run(all_sources[0](creds, group_name))
+        if os.getenv("ESIM_FB_BACKFILL_DAYS"):
+            logging.info("Insights backfill mode: skipping current-state resources")
+        else:
+            pipeline.run([source(creds, group_name) for source in all_sources[1:]])
 
         if idx < len(accounts) - 1 and delay_seconds > 0:
             logging.info(

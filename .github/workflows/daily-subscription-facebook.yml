@@ -2,8 +2,23 @@ name: Subscription Facebook Ads Daily ETL
 
 on:
   workflow_dispatch:
+    inputs:
+      creative_refresh_mode:
+        description: "Creative refresh mode"
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - incremental
+          - full
   schedule:
-    - cron: "0 3 * * *" # Every day at 03:00 UTC (08:30 IST, after Facebook batch C)
+    - cron: "0 3 * * 1-6" # Incremental Monday-Saturday
+    - cron: "0 3 * * 0" # Sunday full reconciliation replaces the daily run
+
+concurrency:
+  group: subscription-facebook
+  cancel-in-progress: false
 
 jobs:
   subscription_facebook_etl:
@@ -16,4 +31,5 @@ jobs:
     with:
       pipeline: subscription_facebook
       group: ${{ matrix.group }}
+      facebook_creative_refresh_mode: ${{ github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0' && 'full' || github.event_name == 'workflow_dispatch' && inputs.creative_refresh_mode || 'auto' }}
     secrets: inherit

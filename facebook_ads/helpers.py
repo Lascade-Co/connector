@@ -16,10 +16,10 @@ from dlt.sources.helpers import requests
 from dlt.sources.helpers.requests import Client
 from facebook_business import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
-from facebook_business.adobjects.user import User
 from facebook_business.api import FacebookResponse
 
-from .exceptions import InsightsJobTimeout
+from .exceptions import InsightsJobFailed, InsightsJobTimeout
+from .rate_limit import RATE_LIMIT_CODES, observe_meta_response
 from .settings import (
     FACEBOOK_INSIGHTS_RETENTION_PERIOD,
     INSIGHTS_PRIMARY_KEY,
@@ -243,23 +243,46 @@ You should remove the fields in `fields` argument that are not necessary, as tha
 def execute_job(
     job: AbstractCrudObject,
     insights_max_wait_to_start_seconds: int = 5 * 60,
-    insights_max_wait_to_finish_seconds: int = 30 * 60,
-    insights_max_async_sleep_seconds: int = 5 * 60,
+    insights_max_wait_to_finish_seconds: int = 60 * 60,
+    insights_max_async_sleep_seconds: int = 60,
 ) -> AbstractCrudObject:
-    status: str = None
     time_start = time.time()
     sleep_time = 10
-    while status != "Job Completed":
+    while True:
         duration = time.time() - time_start
         job = job.api_get()
-        status = job["async_status"]
-        percent_complete = job["async_percent_completion"]
+        status = job.get("async_status")
+        percent_complete = int(job.get("async_percent_completion") or 0)
 
-        job_id = job["id"]
+        job_id = job.get("id", "unknown")
         logger.info("%s, %d%% done", status, percent_complete)
 
-        if status == "Job Completed":
+        if status == "Job Completed" and percent_complete >= 100:
             return job
+
+        if status in ("Job Failed", "Job Skipped"):
+            details = job.export_all_data()
+            error_message = (
+                details.get("error_user_msg")
+                or details.get("error_message")
+                or "Meta did not include an error message"
+            )
+            try:
+                error_code = int(details["error_code"])
+            except (KeyError, TypeError, ValueError):
+                error_code = None
+            try:
+                error_subcode = int(details["error_subcode"])
+            except (KeyError, TypeError, ValueError):
+                error_subcode = None
+            raise InsightsJobFailed(
+                "facebook_insights",
+                f"Insights job {job_id} ended with {status}: {error_message} "
+                f"(code={error_code}, subcode={error_subcode})",
+                status=status,
+                error_code=error_code,
+                error_subcode=error_subcode,
+            )
 
         if duration > insights_max_wait_to_start_seconds and percent_complete == 0:
             pretty_error_message = (
@@ -269,35 +292,33 @@ def execute_job(
                 "facebook_insights",
                 pretty_error_message.format(job_id, insights_max_wait_to_start_seconds),
             )
-        elif (
-            duration > insights_max_wait_to_finish_seconds and status != "Job Completed"
-        ):
+        elif duration > insights_max_wait_to_finish_seconds:
             pretty_error_message = (
                 "Insights job {} did not complete after {} seconds. " + JOB_TIMEOUT_INFO
             )
             raise InsightsJobTimeout(
                 "facebook_insights",
                 pretty_error_message.format(
-                    job_id, insights_max_wait_to_finish_seconds // 60
+                    job_id, insights_max_wait_to_finish_seconds
                 ),
             )
 
         logger.info("sleeping for %d seconds until job is done", sleep_time)
         time.sleep(sleep_time)
-        if sleep_time < insights_max_async_sleep_seconds:
-            sleep_time = 2 * sleep_time
-    return job
+        sleep_time = min(insights_max_async_sleep_seconds, 2 * sleep_time)
 
 
+@functools.lru_cache(maxsize=128)
 def get_ads_account(
     account_id: str, access_token: str, request_timeout: float, app_api_version: str
 ) -> AdAccount:
+    """Create one explicitly API-bound account object per process/configuration."""
+
     notify_on_token_expiration()
 
-    # FB error codes that should be retried (rate limits, transient backend, etc.)
-    _RETRYABLE_FB_CODES = frozenset(
-        (1, 2, 4, 17, 341, 32, 613, *range(80000, 80007), 800008, 800009, 80014)
-    )
+    # Only true transient backend errors are retried automatically. Quota
+    # failures must surface immediately so the account can be parked.
+    retryable_fb_codes = frozenset((1, 2, 341))
 
     def retry_on_limit(response: requests.Response, exception: BaseException) -> bool:
         # dlt invokes the predicate with response=None for exception-only
@@ -318,6 +339,14 @@ def get_ads_account(
         message = error.get("message") or ""
         is_5xx = 500 <= response.status_code < 600
 
+        if response.status_code == 429 or code in RATE_LIMIT_CODES:
+            logger.warning(
+                "facebook_ads source is quota-limited by Meta (code %s); "
+                "stopping automatic HTTP retries",
+                code,
+            )
+            return False
+
         # "Please reduce the amount of data..." is deterministic — retrying the
         # same request won't help. Surface it immediately so the caller can
         # shrink the page size / fields and retry adaptively.
@@ -330,7 +359,7 @@ def get_ads_account(
         if not error and is_5xx:
             return True
 
-        should_retry = code in _RETRYABLE_FB_CODES
+        should_retry = code in retryable_fb_codes
         if should_retry:
             logger.warning(
                 "facebook_ads source will retry due to %s with error code %s",
@@ -348,13 +377,12 @@ def get_ads_account(
         # 5xx in status_codes here would force 12 backoff attempts on that
         # deterministic error before the ad_creatives caller can shrink the
         # page size, since dlt's Client OR's status retries with the predicate.
-        # 429 is kept as a status-level fallback for rate-limit responses that
-        # lack a JSON body.
-        status_codes=(429,),
+        status_codes=(),
         retry_condition=retry_on_limit,
-        request_max_attempts=12,
+        request_max_attempts=4,
         request_backoff_factor=2,
     ).session
+    retry_session.hooks.setdefault("response", []).append(observe_meta_response)
     retry_session.params.update({"access_token": access_token})  # type: ignore
     # patch dlt requests session with retries
     API = FacebookAdsApi.init(
@@ -363,18 +391,7 @@ def get_ads_account(
         api_version=app_api_version,
     )
     API._session.requests = retry_session
-    user = User(fbid="me")
-
-    accounts = user.get_ad_accounts()
-    account: AdAccount = None
-    for acc in accounts:
-        if acc["account_id"] == account_id:
-            account = acc
-
-    if not account:
-        raise ValueError("Couldn't find account with id {}".format(account_id))
-
-    return account
+    return AdAccount(fbid="act_" + account_id, api=API)
 
 
 @with_config(sections=("sources", "facebook_ads"))

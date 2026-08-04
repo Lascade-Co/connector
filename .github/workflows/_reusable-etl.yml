@@ -21,6 +21,11 @@ on:
         required: false
         type: string
         default: ""
+      facebook_creative_refresh_mode:
+        description: "Facebook creative refresh mode (auto, incremental, or full)"
+        required: false
+        type: string
+        default: "auto"
 
 jobs:
   etl:
@@ -102,6 +107,7 @@ jobs:
           ESIM_FB_BACKFILL_DAYS: ${{ inputs.pipeline == 'esim_facebook' && inputs.backfill_days || '' }}
           SUB_FB_BACKFILL_DAYS: ${{ inputs.pipeline == 'subscription_facebook' && inputs.backfill_days || '' }}
           SUB_GOOGLE_BACKFILL_DAYS: ${{ inputs.pipeline == 'subscription_google' && inputs.backfill_days || '' }}
+          FB_CREATIVE_REFRESH_MODE: ${{ inputs.facebook_creative_refresh_mode }}
           # Set pipeline name suffix if provided
           PIPELINE_NAME_SUFFIX: ${{ inputs.pipeline_name_suffix }}
         run: |

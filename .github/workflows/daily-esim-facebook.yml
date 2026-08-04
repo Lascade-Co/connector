@@ -2,8 +2,23 @@ name: eSIM Facebook Ads Daily ETL
 
 on:
   workflow_dispatch:
+    inputs:
+      creative_refresh_mode:
+        description: "Creative refresh mode"
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - incremental
+          - full
   schedule:
-    - cron: "30 8 * * *"
+    - cron: "30 8 * * 1-6" # Incremental Monday-Saturday
+    - cron: "30 8 * * 0" # Sunday full reconciliation replaces the daily run
+
+concurrency:
+  group: esim-facebook
+  cancel-in-progress: false
 
 jobs:
   esim_facebook_etl:
@@ -16,4 +31,5 @@ jobs:
     with:
       pipeline: esim_facebook
       group: ${{ matrix.group }}
+      facebook_creative_refresh_mode: ${{ github.event_name == 'schedule' && github.event.schedule == '30 8 * * 0' && 'full' || github.event_name == 'workflow_dispatch' && inputs.creative_refresh_mode || 'auto' }}
     secrets: inherit

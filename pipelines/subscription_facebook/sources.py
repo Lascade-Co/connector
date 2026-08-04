@@ -1,4 +1,10 @@
 import dlt
+from pipelines.facebook.creative_status import (
+    get_partial_creative_accounts,
+    mark_partial_creative_account,
+    reset_partial_creative_accounts,
+)
+from pipelines.facebook.rate_limit import stream_with_rate_limit_guard
 from pipelines.subscription_facebook.raw_sources import ads_src, insights_src
 
 # ---------------------------------------------------------------------------
@@ -34,11 +40,20 @@ def adsets_all(accounts, group_name: str):
 
 @dlt.resource(name="ad_creatives", primary_key="id", write_disposition="merge")
 def creatives_all(accounts, group_name: str):
-    for cred in accounts:
-        for r in ads_src(cred).ad_creatives:
-            r["account_id"] = cred["account_id"]
-            r["managing_system"] = group_name
-            yield r
+    yield from stream_with_rate_limit_guard(
+        accounts,
+        group_name,
+        _stream_creatives,
+        resource_name="ad_creatives",
+        on_partial=mark_partial_creative_account,
+    )
+
+
+def _stream_creatives(cred, group_name: str):
+    for row in ads_src(cred).ad_creatives:
+        row["account_id"] = cred["account_id"]
+        row["managing_system"] = group_name
+        yield row
 
 # ---------------------------------------------------------------------------
 # METRIC FACT TABLE
@@ -81,9 +96,9 @@ def insights_all(accounts, group_name: str):
 # ---------------------------------------------------------------------------
 
 all_sources = [
+    insights_all,
     ads_all,
     campaigns_all,
     adsets_all,
     creatives_all,
-    insights_all,
 ]

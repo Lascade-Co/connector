@@ -5,11 +5,11 @@ from typing import Iterator, Sequence
 import dlt
 import logging
 import os
-import time
 from dlt.common import pendulum
 from dlt.common.typing import TDataItems
 from dlt.sources import DltResource
 
+from .creatives import iter_creatives
 from .helpers import flatten_facebook_insights
 from .helpers import (
     get_data_chunked,
@@ -19,9 +19,9 @@ from .helpers import (
     execute_job,
     get_ads_account,
 )
-from facebook_business.exceptions import FacebookRequestError
-
-from .exceptions import InsightsJobTimeout
+from .exceptions import InsightsJobFailed
+from .insights import iter_date_windows, merge_report_rows, split_insight_fields
+from .rate_limit import RATE_LIMIT_CODES
 from .settings import (
     DEFAULT_AD_FIELDS,
     DEFAULT_ADCREATIVE_FIELDS,
@@ -48,6 +48,33 @@ from .utils import (
 from .utils import debug_access_token, get_long_lived_token
 
 
+_ACTION_INSIGHT_FIELDS = frozenset(
+    (
+        "actions",
+        "action_values",
+        "conversions",
+        "conversion_values",
+        "website_ctr",
+        "cost_per_action_type",
+        "cost_per_result",
+        "purchase_roas",
+    )
+)
+_SPLITTABLE_INSIGHTS_ERROR_SUBCODES = frozenset((1487534,))
+
+
+def _is_splittable_insights_failure(exc: InsightsJobFailed) -> bool:
+    """Return true only for terminal failures that smaller ranges can repair."""
+
+    if exc.error_subcode in _SPLITTABLE_INSIGHTS_ERROR_SUBCODES:
+        return True
+    message = str(exc).lower()
+    return exc.error_code == 1 and any(
+        marker in message
+        for marker in ("reduce the amount of data", "too much data", "query too large")
+    )
+
+
 def _get_int_env(name: str, default: int) -> int:
     raw = os.getenv(name)
     if raw is None or raw == "":
@@ -63,7 +90,7 @@ def _get_int_env(name: str, default: int) -> int:
 def facebook_ads_source(
         account_id: str = dlt.config.value,
         access_token: str = dlt.secrets.value,
-        chunk_size: int = 50,
+        chunk_size: int = 200,
         request_timeout: float = 300.0,
         app_api_version: str = None,
 ) -> Sequence[DltResource]:
@@ -79,7 +106,7 @@ def facebook_ads_source(
     Args:
         account_id (str, optional): Account id associated with add manager. See README.md
         access_token (str, optional): Access token associated with the Business Facebook App. See README.md
-        chunk_size (int, optional): A size of the page and batch request. You may need to decrease it if you request a lot of fields. Defaults to 50.
+        chunk_size (int, optional): A size of the page and batch request. You may need to decrease it if you request a lot of fields. Defaults to 200.
         request_timeout (float, optional): Connection timeout. Defaults to 300.0.
         app_api_version(str, optional): A version of the facebook api required by the app for which the access tokens were issued ie. 'v17.0'. Defaults to the facebook_business library default version
 
@@ -122,48 +149,7 @@ def facebook_ads_source(
     def ad_creatives(
             fields: Sequence[str] = DEFAULT_ADCREATIVE_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
-        # ad_creatives carries heavy fields (e.g. object_story_spec) that can
-        # trip Meta's "reduce the amount of data" error (code 1 / HTTP 500).
-        # Default to the source chunk_size to keep call volume low (rate-limit
-        # safe); shrink adaptively only when that error actually fires.
-        # Override the start size via FB_ADCREATIVES_CHUNK_SIZE.
-        # Clamp to >= 1: a zero/negative override would silently emit nothing or
-        # break itertools.islice in get_data_chunked.
-        default_size = max(1, chunk_size)
-        configured = max(1, _get_int_env("FB_ADCREATIVES_CHUNK_SIZE", default_size))
-        initial_size = min(configured, default_size)
-        # summary=false drops the paging summary block we don't use, trimming payload.
-        extra_params = {"summary": "false"}
-        current_size = initial_size
-        # On a shrink retry the SDK re-paginates from the first page; track ids
-        # already yielded so dlt does not see duplicates in the extract phase.
-        seen_ids: set = set()
-        while True:
-            try:
-                for chunk in get_data_chunked(
-                    account.get_ad_creatives, fields, states, current_size, extra_params
-                ):
-                    fresh = [it for it in chunk if it.get("id") not in seen_ids]
-                    if not fresh:
-                        continue
-                    seen_ids.update(it["id"] for it in fresh if it.get("id"))
-                    yield fresh
-                return
-            except FacebookRequestError as e:
-                code = e.api_error_code()
-                msg = (e.api_error_message() or "")
-                is_reduce_data = code == 1 and "reduce the amount of data" in msg.lower()
-                if not is_reduce_data or current_size <= 1:
-                    raise
-                new_size = max(1, current_size // 2)
-                logging.warning(
-                    "ad_creatives: Meta returned 'reduce data' (code 1); "
-                    "shrinking page size %d -> %d and retrying (yielded so far: %d)",
-                    current_size,
-                    new_size,
-                    len(seen_ids),
-                )
-                current_size = new_size
+        yield from iter_creatives(account, account_id, fields, states)
 
     return campaigns, ads, ad_sets, ad_creatives, ads | leads
 
@@ -180,17 +166,18 @@ def facebook_insights_source(
         action_breakdowns: Sequence[str] = ALL_ACTION_BREAKDOWNS,
         level: TInsightsLevels = "ad",
         action_attribution_windows: Sequence[str] = ALL_ACTION_ATTRIBUTION_WINDOWS,
-        batch_size: int = 50,
+        batch_size: int = 500,
         request_timeout: int = 300,
         app_api_version: str = None,
 ) -> DltResource:
     """Incrementally loads insight reports with defined granularity level, fields, breakdowns etc.
 
-    By default, the reports are generated one by one for each day, starting with today - attribution_window_days_lag. On subsequent runs, only the reports
-    from the last report date until today are loaded (incremental load). The reports from last 7 days (`attribution_window_days_lag`) are refreshed on each load to
-    account for changes during attribution window.
+    Reports use bounded multi-day request windows while retaining daily rows.
+    On subsequent runs, the attribution lag is refreshed and typically fits in
+    one request window.
 
-    Mind that each report is a job and takes some time to execute.
+    Core and unique-reach metrics may use separate async jobs when required by
+    Meta field compatibility.
 
     Args:
         account_id: str = dlt.config.value,
@@ -203,7 +190,7 @@ def facebook_insights_source(
         action_breakdowns (Sequence[str], optional): Action aggregation types. See settings.py for details. Defaults to ALL_ACTION_BREAKDOWNS.
         level (TInsightsLevels, optional): The granularity level. Defaults to "ad".
         action_attribution_windows (Sequence[str], optional): Attribution windows for actions. Defaults to ALL_ACTION_ATTRIBUTION_WINDOWS.
-        batch_size (int, optional): Page size when reading data from particular report. Defaults to 50.
+        batch_size (int, optional): Page size when reading data from particular report. Defaults to 500.
         request_timeout (int, optional): Connection timeout. Defaults to 300.
         app_api_version(str, optional): A version of the facebook api required by the app for which the access tokens were issued ie. 'v17.0'. Defaults to the facebook_business library default version
 
@@ -219,15 +206,12 @@ def facebook_insights_source(
         "FB_INSIGHTS_MAX_WAIT_TO_START_SECONDS", 5 * 60
     )
     insights_max_wait_to_finish_seconds = _get_int_env(
-        "FB_INSIGHTS_MAX_WAIT_TO_FINISH_SECONDS", 30 * 60
+        "FB_INSIGHTS_MAX_WAIT_TO_FINISH_SECONDS", 60 * 60
     )
     insights_max_async_sleep_seconds = _get_int_env(
-        "FB_INSIGHTS_MAX_ASYNC_SLEEP_SECONDS", 5 * 60
+        "FB_INSIGHTS_MAX_ASYNC_SLEEP_SECONDS", 60
     )
-    insights_max_retries = _get_int_env("FB_INSIGHTS_MAX_RETRIES", 2)
-    insights_retry_base_delay_seconds = _get_int_env(
-        "FB_INSIGHTS_RETRY_BASE_DELAY_SECONDS", 300
-    )
+    insights_window_days = max(1, _get_int_env("FB_INSIGHTS_WINDOW_DAYS", 8))
 
     # we load with a defined lag
     initial_load_start_date = pendulum.today().subtract(days=initial_load_past_days)
@@ -247,8 +231,18 @@ def facebook_insights_source(
         start_date = get_start_date(date_start, attribution_window_days_lag)
         end_date = pendulum.now()
 
-        # fetch insights in incremental day steps
-        while start_date <= end_date:
+        requested_fields = list(
+            set(fields)
+            .union(INSIGHTS_BREAKDOWNS_OPTIONS[breakdowns]["fields"])
+            .difference(INVALID_INSIGHTS_FIELDS)
+        )
+        core_fields, unique_fields = split_insight_fields(requested_fields)
+
+        def fetch_report(
+            report_fields: Sequence[str],
+            report_start: pendulum.DateTime,
+            report_end: pendulum.DateTime,
+        ) -> list[dict]:
             query = {
                 "level": level,
                 # "action_breakdowns": list(action_breakdowns),
@@ -256,45 +250,57 @@ def facebook_insights_source(
                 #     INSIGHTS_BREAKDOWNS_OPTIONS[breakdowns]["breakdowns"]
                 # ),
                 "limit": batch_size,
-                "fields": list(
-                    set(fields)
-                    .union(INSIGHTS_BREAKDOWNS_OPTIONS[breakdowns]["fields"])
-                    .difference(INVALID_INSIGHTS_FIELDS)
-                ),
+                "fields": list(report_fields),
                 "time_increment": time_increment_days,
-                "action_attribution_windows": list(action_attribution_windows),
-                "time_ranges": [
-                    {
-                        "since": start_date.to_date_string(),
-                        "until": start_date.add(
-                            days=time_increment_days - 1
-                        ).to_date_string(),
-                    }
-                ],
+                "time_range": {
+                    "since": report_start.to_date_string(),
+                    "until": report_end.to_date_string(),
+                },
             }
-            job = None
-            for attempt in range(insights_max_retries + 1):
-                try:
-                    job = execute_job(
-                        account.get_insights(params=query, is_async=True),
-                        insights_max_wait_to_start_seconds=insights_max_wait_to_start_seconds,
-                        insights_max_wait_to_finish_seconds=insights_max_wait_to_finish_seconds,
-                        insights_max_async_sleep_seconds=insights_max_async_sleep_seconds,
-                    )
-                    break
-                except InsightsJobTimeout:
-                    if attempt >= insights_max_retries:
-                        raise
-                    delay = insights_retry_base_delay_seconds * (2 ** attempt)
-                    logging.warning(
-                        "Insights job timeout; retrying in %d seconds (attempt %d/%d)",
-                        delay,
-                        attempt + 1,
-                        insights_max_retries,
-                    )
-                    time.sleep(delay)
-            yield list(map(process_report_item, job.get_result()))  # noqa
-            start_date = start_date.add(days=time_increment_days)
+            if _ACTION_INSIGHT_FIELDS.intersection(report_fields):
+                query["action_attribution_windows"] = list(
+                    action_attribution_windows
+                )
+            try:
+                job = execute_job(
+                    account.get_insights(params=query, is_async=True),
+                    insights_max_wait_to_start_seconds=insights_max_wait_to_start_seconds,
+                    insights_max_wait_to_finish_seconds=insights_max_wait_to_finish_seconds,
+                    insights_max_async_sleep_seconds=insights_max_async_sleep_seconds,
+                )
+                return [
+                    process_report_item(item)
+                    for item in job.get_result(params={"limit": batch_size})
+                ]
+            except InsightsJobFailed as exc:
+                if exc.error_code in RATE_LIMIT_CODES:
+                    raise
+                if not _is_splittable_insights_failure(exc):
+                    raise
+                if report_start >= report_end:
+                    raise
+                days = (report_end.date() - report_start.date()).days + 1
+                left_days = max(1, days // 2)
+                left_end = report_start.add(days=left_days - 1)
+                right_start = left_end.add(days=1)
+                logging.warning(
+                    "Meta Insights range %s..%s failed; splitting into smaller ranges",
+                    report_start.to_date_string(),
+                    report_end.to_date_string(),
+                )
+                return fetch_report(report_fields, report_start, left_end) + fetch_report(
+                    report_fields, right_start, report_end
+                )
+
+        for window_start, window_end in iter_date_windows(
+            start_date, end_date, insights_window_days
+        ):
+            report_groups = [fetch_report(core_fields, window_start, window_end)]
+            if unique_fields:
+                report_groups.append(
+                    fetch_report(unique_fields, window_start, window_end)
+                )
+            yield merge_report_rows(report_groups)
 
     # Attach a lightweight map to flatten complex array/object fields to scalar columns
     return facebook_insights.add_map(flatten_facebook_insights, insert_at=1)

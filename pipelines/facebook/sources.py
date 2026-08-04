@@ -1,7 +1,12 @@
 import dlt
 
 from pipelines.facebook.raw_sources import ads_src, insights_src
-from pipelines.facebook.rate_limit import stream_with_rate_limit_retry
+from pipelines.facebook.creative_status import (
+    get_partial_creative_accounts,
+    mark_partial_creative_account,
+    reset_partial_creative_accounts,
+)
+from pipelines.facebook.rate_limit import stream_with_rate_limit_guard
 
 # ---------------------------------------------------------------------------
 # STRUCTURAL OBJECTS
@@ -44,34 +49,13 @@ def _stream_creatives(cred, group_name: str):
 
 @dlt.resource(name="ad_creatives", primary_key="id", write_disposition="merge")
 def creatives_all(accounts, group_name: str):
-    """Yield creatives across accounts with rate-limit-aware retry.
-
-    Iterating the inner `ads_src(cred).ad_creatives` DltResource routes
-    through dlt's pipe iterator, which wraps any non-dlt exception as
-    `ResourceExtractionError(...) from ex`. But `ads_src(cred)` itself
-    eagerly calls `get_ads_account` for credential lookup, which can raise
-    `FacebookRequestError` directly without wrapping. We catch both forms
-    and walk `__cause__` to find a rate-limit FB error; everything else
-    re-raises so genuine bugs stay loud.
-
-    On a rate-limit hit we read the account's own
-    `estimated_time_to_regain_access` header (via `parse_wait_seconds`). If
-    the estimate fits inside `WAIT_CAP_SECONDS` we sleep and retry the
-    account once; otherwise — or if the retry also rate-limits — we log at
-    ERROR and move on. Items already yielded persist via the merge
-    disposition, so the next scheduled run resumes by primary key.
-
-    Tradeoff: Meta paginates by an opaque cursor with no server-side
-    ordering guarantee, so we can't checkpoint mid-account — a run that
-    consistently rate-limits at page N will load pages 1..N and silently
-    miss N+1+. Accounts repeatedly hitting this should be triaged (split
-    scheduling, lower field set, etc.).
-    """
-    yield from stream_with_rate_limit_retry(
+    """Park a quota-limited account and let the runner report a partial load."""
+    yield from stream_with_rate_limit_guard(
         accounts,
         group_name,
         _stream_creatives,
         resource_name="ad_creatives",
+        on_partial=mark_partial_creative_account,
     )
 
 # ---------------------------------------------------------------------------
@@ -96,9 +80,9 @@ def insights_all(accounts, group_name: str):
 # ---------------------------------------------------------------------------
 
 all_sources = [
+    insights_all,
     ads_all,
     campaigns_all,
     adsets_all,
     creatives_all,
-    insights_all,
 ]

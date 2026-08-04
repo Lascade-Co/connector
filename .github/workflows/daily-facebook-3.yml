@@ -1,19 +1,35 @@
-name: Facebook Ads Daily ETL - Batch C
+name: Facebook Ads Daily ETL - d2 Family
 
 on:
   workflow_dispatch:
+    inputs:
+      creative_refresh_mode:
+        description: "Creative refresh mode"
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - incremental
+          - full
   schedule:
-    - cron: "0 2 * * *" # Every day at 02:00 UTC (07:30 IST)
+    - cron: "0 2 * * 1-6" # Incremental Monday-Saturday
+    - cron: "0 2 * * 0" # Sunday full reconciliation replaces the daily run
+
+concurrency:
+  group: facebook-d2-family
+  cancel-in-progress: false
 
 jobs:
   facebook_etl:
     strategy:
       matrix:
-        group: [d1c, m4c, d2c]
+        group: [d2a, d2b, d2c]
       fail-fast: false
       max-parallel: 1
     uses: ./.github/workflows/_reusable-etl.yml
     with:
       pipeline: facebook
       group: ${{ matrix.group }}
+      facebook_creative_refresh_mode: ${{ github.event_name == 'schedule' && github.event.schedule == '0 2 * * 0' && 'full' || github.event_name == 'workflow_dispatch' && inputs.creative_refresh_mode || 'auto' }}
     secrets: inherit

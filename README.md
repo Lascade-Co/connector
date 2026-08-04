@@ -66,10 +66,15 @@ This project implements ETL (Extract, Transform, Load) pipelines for Facebook Ad
 
 #### Facebook Ads
 ```bash
-python main.py facebook d1  # Run group d1
-python main.py facebook m4  # Run group m4
-python main.py facebook d2  # Run group d2
+python main.py facebook d1c
+python main.py esim_facebook d1c
+python main.py subscription_facebook d1c
 ```
+
+Local Facebook API execution is restricted to exact group `d1c`. Other groups
+must run in GitHub Actions. The Facebook workflows use incremental creative
+refreshes Monday-Saturday, a full reconciliation on Sunday, and expose
+`auto`/`incremental`/`full` modes for manual runs.
 
 #### Google Ads
 ```bash

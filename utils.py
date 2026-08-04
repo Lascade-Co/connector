@@ -1,10 +1,30 @@
 import datetime
 import json
 import logging
+import os
 import sys
 import tomllib as toml  # noqa
 from pathlib import Path
 from typing import Any, Dict, List
+
+
+def enforce_local_facebook_group(group_name: str) -> None:
+    """Allow local Facebook API runs only for the designated test group."""
+    is_github_runner = (
+        os.getenv("GITHUB_ACTIONS", "").casefold() == "true"
+        and os.getenv("CI", "").casefold() == "true"
+        and (os.getenv("GITHUB_RUN_ID") or "").isdigit()
+        and bool(os.getenv("GITHUB_REPOSITORY"))
+        and bool(os.getenv("RUNNER_NAME"))
+    )
+    if is_github_runner:
+        return
+
+    if group_name != "d1c":
+        raise SystemExit(
+            "Local Facebook ETL execution is restricted to group 'd1c'; "
+            f"received {group_name!r}. Other groups may run only in GitHub Actions."
+        )
 
 
 def load_config(group: str, platform: str) -> Dict[str, Any]:
