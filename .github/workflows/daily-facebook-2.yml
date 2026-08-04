@@ -1,4 +1,4 @@
-name: Facebook Ads Daily ETL - m4 Family
+name: Facebook Ads Daily ETL - Batch B
 
 on:
   workflow_dispatch:
@@ -17,14 +17,14 @@ on:
     - cron: "0 1 * * 0" # Sunday full reconciliation replaces the daily run
 
 concurrency:
-  group: facebook-m4-family
+  group: facebook-batch-b
   cancel-in-progress: false
 
 jobs:
   facebook_etl:
     strategy:
       matrix:
-        group: [m4a, m4b, m4c]
+        group: [d1b, m4b, d2b]
       fail-fast: false
       max-parallel: 1
     uses: ./.github/workflows/_reusable-etl.yml

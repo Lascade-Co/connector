@@ -79,7 +79,7 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 - Dataset/table naming uses configurable separators
 
 ### Rate Limiting & Scaling
-- Facebook workflow groups sharing a credential family run sequentially; account delays default to zero
+- Facebook A/B/C matrices mix independent `d1`/`m4`/`d2` families, spacing each family's suffix shards by roughly one hour; account delays default to zero
 - Insights use bounded async date windows and split incompatible unique metrics; quota failures surface without stacked retries
 - Creatives are incremental Monday-Saturday and fully reconciled Sunday or with manual workflow mode `full`
 - Facebook historical backfills load Insights only and serialize multi-group matrices; current-state resources use the daily/manual Facebook workflows

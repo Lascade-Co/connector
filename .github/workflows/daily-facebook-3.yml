@@ -1,4 +1,4 @@
-name: Facebook Ads Daily ETL - d2 Family
+name: Facebook Ads Daily ETL - Batch C
 
 on:
   workflow_dispatch:
@@ -17,14 +17,14 @@ on:
     - cron: "0 2 * * 0" # Sunday full reconciliation replaces the daily run
 
 concurrency:
-  group: facebook-d2-family
+  group: facebook-batch-c
   cancel-in-progress: false
 
 jobs:
   facebook_etl:
     strategy:
       matrix:
-        group: [d2a, d2b, d2c]
+        group: [d1c, m4c, d2c]
       fail-fast: false
       max-parallel: 1
     uses: ./.github/workflows/_reusable-etl.yml
