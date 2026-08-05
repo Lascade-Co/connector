@@ -186,6 +186,10 @@ INSIGHT_FIELDS_TYPES: TTableSchemaColumns = {
     "cpm": {"data_type": "decimal"},
     "cpp": {"data_type": "decimal"},
     "spend": {"data_type": "decimal"},
+    "trial_starts": {"data_type": "decimal"},
+    "trial_start_value": {"data_type": "decimal"},
+    "subscriptions": {"data_type": "decimal"},
+    "subscription_value": {"data_type": "decimal"},
     # Flattened scalar from complex list; ensure column exists in destination
     "cost_per_result": {"data_type": "decimal"},
 }

@@ -2,6 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from facebook_business.exceptions import FacebookRequestError
+
 from facebook_ads import creatives
 
 
@@ -71,6 +73,183 @@ class CreativeRefreshTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "auto, incremental, or full"):
                 creatives.get_creative_refresh_mode()
+
+    def test_full_reconciliation_starts_at_250_and_adaptively_halves(self):
+        sizes = []
+
+        def chunks(_method, _fields, _states, chunk_size, _params):
+            sizes.append(chunk_size)
+            if chunk_size == 250:
+                raise FacebookRequestError(
+                    "too much data",
+                    {},
+                    500,
+                    {},
+                    {
+                        "error": {
+                            "code": 1,
+                            "message": "Please reduce the amount of data you're asking for",
+                        }
+                    },
+                )
+            yield [{"id": "creative-1"}]
+
+        account = SimpleNamespace(get_ad_creatives=object())
+        with (
+            patch.dict(creatives.os.environ, {}, clear=True),
+            patch.object(creatives, "get_data_chunked", side_effect=chunks),
+        ):
+            rows = list(creatives._iter_full_creatives(account, ("id",), None))
+
+        self.assertEqual(sizes, [250, 125])
+        self.assertEqual(rows, [[{"id": "creative-1"}]])
+
+    def test_adaptive_restart_does_not_replay_already_yielded_creatives(self):
+        attempts = 0
+
+        def chunks(_method, _fields, _states, chunk_size, _params):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                yield [{"id": "creative-1"}]
+                raise FacebookRequestError(
+                    "too much data",
+                    {},
+                    500,
+                    {},
+                    {
+                        "error": {
+                            "code": 1,
+                            "message": "Please reduce the amount of data you're asking for",
+                        }
+                    },
+                )
+            self.assertEqual(chunk_size, 125)
+            yield [{"id": "creative-1"}, {"id": "creative-2"}]
+
+        account = SimpleNamespace(get_ad_creatives=object())
+        with (
+            patch.dict(creatives.os.environ, {}, clear=True),
+            patch.object(creatives, "get_data_chunked", side_effect=chunks),
+        ):
+            rows = list(creatives._iter_full_creatives(account, ("id",), None))
+
+        self.assertEqual(rows, [[{"id": "creative-1"}], [{"id": "creative-2"}]])
+
+    def test_full_reconciliation_propagates_quota_errors_unchanged(self):
+        error = FacebookRequestError(
+            "rate limited",
+            {},
+            429,
+            {},
+            {"error": {"code": 17, "message": "User request limit reached"}},
+        )
+        account = SimpleNamespace(get_ad_creatives=object())
+        with patch.object(creatives, "get_data_chunked", side_effect=error):
+            with self.assertRaises(FacebookRequestError) as raised:
+                list(creatives._iter_full_creatives(account, ("id",), None))
+
+        self.assertIs(raised.exception, error)
+
+    def test_partial_initial_scan_forces_full_reconciliation_on_next_run(self):
+        first = {"id": "creative-1", "name": "First", "status": "ACTIVE"}
+        missing = {"id": "creative-2", "name": "Second", "status": "ACTIVE"}
+        state = {}
+        quota_error = FacebookRequestError(
+            "rate limited",
+            {},
+            429,
+            {},
+            {"error": {"code": 17, "message": "User request limit reached"}},
+        )
+
+        def partial_full_scan(_account, _fields, _states):
+            yield [first]
+            raise quota_error
+
+        with patch.object(
+            creatives, "_iter_full_creatives", side_effect=partial_full_scan
+        ):
+            with self.assertRaises(FacebookRequestError) as raised:
+                self._run(state)
+
+        self.assertIs(raised.exception, quota_error)
+        fingerprints = state["accounts"]["act-1"]["fingerprints"]
+        self.assertEqual(
+            fingerprints,
+            {"creative-1": creatives._creative_fingerprint(first)},
+        )
+        self.assertTrue(
+            state["accounts"]["act-1"]["full_reconciliation_incomplete"]
+        )
+
+        with (
+            patch.object(
+                creatives,
+                "_iter_full_creatives",
+                return_value=iter([[first, missing]]),
+            ) as full_scan,
+            patch.object(creatives, "get_data_chunked") as light_scan,
+        ):
+            rows = self._run(state)
+
+        full_scan.assert_called_once()
+        light_scan.assert_not_called()
+        self.assertEqual([item["id"] for item in rows[0]], ["creative-1", "creative-2"])
+        self.assertEqual(
+            set(state["accounts"]["act-1"]["fingerprints"]),
+            {"creative-1", "creative-2"},
+        )
+        self.assertFalse(
+            state["accounts"]["act-1"]["full_reconciliation_incomplete"]
+        )
+
+    def test_partial_manual_full_scan_forces_next_automatic_run_to_full_mode(self):
+        old = {"id": "creative-1", "name": "Old", "status": "ACTIVE"}
+        state = {
+            "accounts": {
+                "act-1": {
+                    "fingerprints": {
+                        "creative-1": creatives._creative_fingerprint(old)
+                    }
+                }
+            }
+        }
+        quota_error = FacebookRequestError(
+            "rate limited",
+            {},
+            429,
+            {},
+            {"error": {"code": 17, "message": "User request limit reached"}},
+        )
+
+        def partial_full_scan(_account, _fields, _states):
+            yield [old]
+            raise quota_error
+
+        with patch.object(
+            creatives, "_iter_full_creatives", side_effect=partial_full_scan
+        ):
+            with self.assertRaises(FacebookRequestError):
+                self._run(state, mode="full")
+
+        self.assertTrue(
+            state["accounts"]["act-1"]["full_reconciliation_incomplete"]
+        )
+
+        with (
+            patch.object(
+                creatives, "_iter_full_creatives", return_value=iter([[old]])
+            ) as full_scan,
+            patch.object(creatives, "get_data_chunked") as light_scan,
+        ):
+            self._run(state, mode="auto")
+
+        full_scan.assert_called_once()
+        light_scan.assert_not_called()
+        self.assertFalse(
+            state["accounts"]["act-1"]["full_reconciliation_incomplete"]
+        )
 
     def test_explicit_full_mode_reconciles_even_when_state_exists(self):
         old = {"id": "creative-1", "name": "Old", "status": "ACTIVE"}

@@ -101,7 +101,9 @@ def _iter_full_creatives(
 ) -> Iterator[TDataItems]:
     """Run the weekly/manual full edge scan with a conservative page size."""
 
-    current_size = max(1, _get_int_env("FB_ADCREATIVES_CHUNK_SIZE", 25))
+    # Development access allows very few read-score points. Begin with a larger
+    # page and retain the adaptive response-size fallback for oversized payloads.
+    current_size = max(1, _get_int_env("FB_ADCREATIVES_CHUNK_SIZE", 250))
     seen_ids: set[str] = set()
     while True:
         try:
@@ -150,13 +152,28 @@ def iter_creatives(
     account_states = resource_state.setdefault("accounts", {})
     account_state = account_states.setdefault(str(account_id), {})
     fingerprints: dict[str, str] = account_state.setdefault("fingerprints", {})
+    full_reconciliation_incomplete = bool(
+        account_state.get("full_reconciliation_incomplete")
+    )
 
     requested_mode = get_creative_refresh_mode()
-    effective_mode = "full" if requested_mode == "full" or not fingerprints else "incremental"
+    effective_mode = (
+        "full"
+        if requested_mode == "full"
+        or not fingerprints
+        or full_reconciliation_incomplete
+        else "incremental"
+    )
     if requested_mode == "incremental" and not fingerprints:
         logging.warning(
             "ad_creatives account=%s has no fingerprint baseline; running the "
             "required initial full reconciliation",
+            account_id,
+        )
+    if full_reconciliation_incomplete:
+        logging.warning(
+            "ad_creatives account=%s has an incomplete full reconciliation; "
+            "retrying full mode before returning to incremental refreshes",
             account_id,
         )
     logging.info(
@@ -167,12 +184,16 @@ def iter_creatives(
     )
 
     if effective_mode == "full":
+        # Set this before extraction so a rate-limited scan leaves a durable
+        # repair marker in the resource state committed by the outer guard.
+        account_state["full_reconciliation_incomplete"] = True
         for chunk in _iter_full_creatives(account, fields, states):
             for item in chunk:
                 creative_id = item.get("id")
                 if creative_id is not None:
                     fingerprints[str(creative_id)] = _creative_fingerprint(item)
             yield chunk
+        account_state["full_reconciliation_incomplete"] = False
         return
 
     id_page_size = max(1, _get_int_env("FB_ADCREATIVE_ID_PAGE_SIZE", 500))

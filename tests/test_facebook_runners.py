@@ -1,4 +1,6 @@
 import unittest
+import tomllib
+from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 import pendulum
@@ -47,10 +49,9 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                         module, "clickhouse_destination", return_value="destination"
                     ),
                     patch.object(module, "run_insights_in_windows") as run_windows,
-                    patch.object(module, "reset_partial_creative_accounts"),
-                    patch.object(
-                        module, "get_partial_creative_accounts", return_value=()
-                    ),
+                    patch.object(module, "reset_partial_resources"),
+                    patch.object(module, "run_structural_resources") as run_structural,
+                    patch.object(module, "raise_for_partial_resources"),
                     patch.object(module.dlt, "pipeline") as pipeline_factory,
                     patch.dict(module.os.environ, GITHUB_RUNNER_ENV, clear=True),
                 ):
@@ -69,9 +70,11 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                         "subscription_facebook": "SUB_FB_BACKFILL_DAYS",
                     }[platform],
                 )
-                self.assertEqual(
-                    pipeline_factory.return_value.run.call_args_list[0].args[0],
-                    [("structural", "act-1", "any-group")],
+                run_structural.assert_called_once_with(
+                    pipeline_factory.return_value,
+                    [structural],
+                    [{"account_id": "act-1", "token": "secret"}],
+                    "any-group",
                 )
 
     def test_facebook_backfills_skip_current_state_resources(self):
@@ -104,10 +107,9 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                         module, "clickhouse_destination", return_value="destination"
                     ),
                     patch.object(module, "run_insights_in_windows") as run_windows,
-                    patch.object(module, "reset_partial_creative_accounts"),
-                    patch.object(
-                        module, "get_partial_creative_accounts", return_value=()
-                    ),
+                    patch.object(module, "reset_partial_resources"),
+                    patch.object(module, "run_structural_resources") as run_structural,
+                    patch.object(module, "raise_for_partial_resources"),
                     patch.object(module.dlt, "pipeline") as pipeline_factory,
                     patch.dict(module.os.environ, env, clear=True),
                 ):
@@ -120,7 +122,7 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                     "any-group",
                     backfill_env_name=backfill_env,
                 )
-                pipeline_factory.return_value.run.assert_not_called()
+                run_structural.assert_not_called()
 
 
 class SharedFacebookRunnerTests(unittest.TestCase):
@@ -138,6 +140,13 @@ class SharedFacebookRunnerTests(unittest.TestCase):
             pendulum.datetime(2026, 8, 5, tz="UTC"),
         ),
     ]
+
+    def test_clickhouse_loader_workers_stay_below_http_pool_capacity(self):
+        config_path = Path(__file__).parents[1] / ".dlt" / "config.toml"
+        with config_path.open("rb") as config_file:
+            config = tomllib.load(config_file)
+
+        self.assertEqual(config["load"]["workers"], 4)
 
     def test_runs_each_insights_window_in_order_with_explicit_bounds(self):
         pipeline = Mock(state={"restored": True})

@@ -331,6 +331,7 @@ class InsightsResultPagingTests(unittest.TestCase):
         rows=(),
         report_start_date="2026-08-01",
         report_end_date="2026-08-01",
+        fields=("account_id", "date_start", "date_stop", "impressions"),
     ):
         account = Mock()
         job = Mock()
@@ -351,7 +352,7 @@ class InsightsResultPagingTests(unittest.TestCase):
             source = facebook_ads_module.facebook_insights_source(
                 account_id="act-1",
                 access_token="secret",
-                fields=("account_id", "date_start", "date_stop", "impressions"),
+                fields=fields,
                 report_start_date=report_start_date,
                 report_end_date=report_end_date,
             )
@@ -395,6 +396,54 @@ class InsightsResultPagingTests(unittest.TestCase):
             resource_state[INSIGHTS_WINDOW_CHECKPOINT],
             "2026-08-02",
         )
+
+    def test_daily_resource_emits_trial_and_subscription_metrics(self):
+        row = Mock()
+        row.export_all_data.return_value = {
+            "account_id": "act-1",
+            "campaign_id": "campaign-1",
+            "adset_id": "adset-1",
+            "ad_id": "ad-1",
+            "date_start": "2026-08-01",
+            "date_stop": "2026-08-01",
+            "actions": [
+                {
+                    "action_type": "offsite_conversion.fb_pixel_start_trial",
+                    "value": "3",
+                },
+                {
+                    "action_type": "offsite_conversion.fb_pixel_subscribe",
+                    "value": "2",
+                },
+            ],
+            "action_values": [
+                {
+                    "action_type": "offsite_conversion.fb_pixel_start_trial",
+                    "value": "15.5",
+                },
+                {
+                    "action_type": "offsite_conversion.fb_pixel_subscribe",
+                    "value": "24.75",
+                },
+            ],
+        }
+
+        extracted, _, _ = self._extract(
+            {},
+            rows=(row,),
+            fields=(
+                "account_id",
+                "date_start",
+                "date_stop",
+                "actions",
+                "action_values",
+            ),
+        )
+
+        self.assertEqual(extracted[0]["trial_starts"], 3.0)
+        self.assertEqual(extracted[0]["trial_start_value"], 15.5)
+        self.assertEqual(extracted[0]["subscriptions"], 2.0)
+        self.assertEqual(extracted[0]["subscription_value"], 24.75)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,11 @@ from typing import Any
 import dlt
 
 from facebook_ads.insights import plan_insights_date_windows
+from pipelines.facebook.creative_status import (
+    account_has_partial_resources,
+    format_partial_resources,
+    get_partial_resources,
+)
 
 
 DEFAULT_INITIAL_LOAD_DAYS = 30
@@ -43,6 +48,40 @@ def clickhouse_destination(destination_name: str | None = None):
     return dlt.destinations.clickhouse(
         destination_name=destination_name,
         credentials={"send_receive_timeout": timeout},
+    )
+
+
+def run_structural_resources(
+    pipeline: Any,
+    resources: list[Callable[..., Any]],
+    creds: list[dict[str, str]],
+    group_name: str,
+) -> None:
+    """Checkpoint each current-state resource and stop an account after throttling."""
+
+    account_id = creds[0]["account_id"]
+    for source in resources:
+        resource = source(creds, group_name)
+        pipeline.run(resource)
+        if account_has_partial_resources(account_id):
+            logging.warning(
+                "Facebook account %s has a quota-limited resource; skipping its "
+                "remaining current-state resources for this run",
+                account_id,
+            )
+            break
+
+
+def raise_for_partial_resources(pipeline_label: str) -> None:
+    """Fail visibly after successful packages have committed valid merge rows/state."""
+
+    if not get_partial_resources():
+        return
+    raise RuntimeError(
+        f"{pipeline_label} resources were only partially loaded "
+        f"({format_partial_resources()}). Valid rows and checkpoints were committed; "
+        "no saved rows were corrupted. A later reconciliation will retry the "
+        "missing subset."
     )
 
 

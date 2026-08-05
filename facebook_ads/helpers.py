@@ -90,6 +90,101 @@ def _first_numeric(value: Any) -> Optional[float]:
         return None
 
 
+_TRIAL_EVENT_ALIASES = {
+    "omni": ("omni_start_trial",),
+    "components": (
+        (
+            "start_trial_mobile_app",
+            "app_custom_event.fb_mobile_start_trial",
+            "fb_mobile_start_trial",
+        ),
+        ("offsite_conversion.fb_pixel_start_trial",),
+    ),
+    "fallback": ("start_trial",),
+}
+
+_SUBSCRIPTION_EVENT_ALIASES = {
+    "omni": ("omni_subscribe",),
+    "components": (
+        (
+            "subscribe_mobile_app",
+            "app_custom_event.fb_mobile_subscribe",
+            "fb_mobile_subscribe",
+        ),
+        ("offsite_conversion.fb_pixel_subscribe",),
+    ),
+    "fallback": ("subscribe",),
+}
+
+
+def _action_values_by_type(
+    item: DictStrAny, field_names: Sequence[str]
+) -> dict[str, float]:
+    """Merge arrays by action type without counting the same type twice."""
+
+    values: dict[str, float] = {}
+    for field_name in field_names:
+        entries = item.get(field_name)
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            action_type = str(entry.get("action_type") or "").strip().lower()
+            value = _first_numeric(entry.get("value"))
+            if action_type and value is not None:
+                values.setdefault(action_type, value)
+    return values
+
+
+def _event_metric(
+    item: DictStrAny,
+    field_names: Sequence[str],
+    aliases: dict[str, tuple],
+) -> float:
+    """Prefer Meta's omni rollup; otherwise combine one web and one app value."""
+
+    values = _action_values_by_type(item, field_names)
+    for action_type in aliases["omni"]:
+        if action_type in values:
+            return values[action_type]
+
+    component_total = 0.0
+    found_component = False
+    for alias_group in aliases["components"]:
+        for action_type in alias_group:
+            if action_type in values:
+                component_total += values[action_type]
+                found_component = True
+                break
+    if found_component:
+        return component_total
+
+    for action_type in aliases["fallback"]:
+        if action_type in values:
+            return values[action_type]
+    return 0.0
+
+
+def _add_subscription_event_metrics(item: DictStrAny) -> None:
+    """Add stable ad-attributed trial/subscription count and value columns."""
+
+    item["trial_starts"] = _event_metric(
+        item, ("conversions", "actions"), _TRIAL_EVENT_ALIASES
+    )
+    item["trial_start_value"] = _event_metric(
+        item, ("conversion_values", "action_values"), _TRIAL_EVENT_ALIASES
+    )
+    item["subscriptions"] = _event_metric(
+        item, ("conversions", "actions"), _SUBSCRIPTION_EVENT_ALIASES
+    )
+    item["subscription_value"] = _event_metric(
+        item,
+        ("conversion_values", "action_values"),
+        _SUBSCRIPTION_EVENT_ALIASES,
+    )
+
+
 def _expand_action_list(
     item: DictStrAny,
     field_name: str,
@@ -166,6 +261,8 @@ def flatten_facebook_insights(item: DictStrAny) -> DictStrAny:
 
     Only selected action types are expanded to avoid excessive schema growth.
     """
+    _add_subscription_event_metrics(item)
+
     # Action-type lists
     _expand_action_list(item, "actions", SELECTED_ACTION_TYPES, ACTIONS_PREFIX)
     _expand_action_list(

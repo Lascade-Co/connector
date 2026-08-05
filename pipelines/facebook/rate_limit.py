@@ -9,12 +9,11 @@ from facebook_business.exceptions import FacebookRequestError
 from facebook_ads.rate_limit import RATE_LIMIT_CODES, parse_usage_headers
 
 
-def _max_estimated_minutes(headers: Mapping[str, str]) -> Optional[int]:
-    """Return the largest `estimated_time_to_regain_access` (minutes) found, or None."""
+def _meta_reset_seconds(headers: Mapping[str, str]) -> Optional[int]:
+    """Return Meta's longest parsed reset duration in seconds, if provided."""
+
     snapshot = parse_usage_headers(headers)
-    if snapshot is None or snapshot.reset_seconds is None:
-        return None
-    return max(1, (snapshot.reset_seconds + 59) // 60)
+    return None if snapshot is None else snapshot.reset_seconds
 
 
 def find_rate_limit_cause(exc: BaseException) -> Optional[FacebookRequestError]:
@@ -48,8 +47,8 @@ def parse_wait_seconds(
     account. Falls back to `default` when no usage header is present or
     parseable.
     """
-    minutes = _max_estimated_minutes(headers or {})
-    seconds = minutes * 60 if minutes is not None else default
+    meta_seconds = _meta_reset_seconds(headers or {})
+    seconds = meta_seconds if meta_seconds is not None else default
     return max(1, seconds)
 
 
@@ -80,14 +79,23 @@ def stream_with_rate_limit_guard(
             wait_seconds = parse_wait_seconds(
                 facebook_error.http_headers(), default=default_wait_seconds
             )
+            meta_reset_seconds = _meta_reset_seconds(
+                facebook_error.http_headers() or {}
+            )
+            error_subcode = facebook_error.api_error_subcode()
+            if meta_reset_seconds is None:
+                wait_detail = f"policy fallback cooldown {wait_seconds}s"
+            else:
+                wait_detail = f"Meta reset estimate {wait_seconds}s"
             logging.error(
-                "%s: account %s rate-limited (code %s); parking it for this "
-                "run (Meta estimates %ds to regain access). Already-yielded "
-                "items remain eligible for merge.",
+                "%s: account %s rate-limited (code %s, subcode %s); parking "
+                "it for this run (%s). Already-yielded items remain eligible "
+                "for merge.",
                 resource_name,
                 account_id,
                 facebook_error.api_error_code(),
-                wait_seconds,
+                error_subcode if error_subcode is not None else "unknown",
+                wait_detail,
             )
             if on_partial is not None:
                 on_partial(account_id)

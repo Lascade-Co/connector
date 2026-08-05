@@ -4,12 +4,14 @@ import os
 import logging
 import time
 
-from pipelines.subscription_facebook.sources import (
-    all_sources,
-    get_partial_creative_accounts,
-    reset_partial_creative_accounts,
+from pipelines.subscription_facebook.sources import all_sources
+from pipelines.facebook.creative_status import reset_partial_resources
+from pipelines.facebook.runner import (
+    clickhouse_destination,
+    raise_for_partial_resources,
+    run_insights_in_windows,
+    run_structural_resources,
 )
-from pipelines.facebook.runner import clickhouse_destination, run_insights_in_windows
 from utils import enforce_local_facebook_group, get_for_group
 
 
@@ -20,7 +22,7 @@ def run():
     group_name = sys.argv[2]
     enforce_local_facebook_group(group_name)
     group, accounts = get_for_group(group_name, "subscription_facebook")
-    reset_partial_creative_accounts()
+    reset_partial_resources()
 
     logging.info(f"Running subscription Facebook Ads pipeline for group: {group_name}")
     logging.info(f"Pulling accounts: {', '.join(accounts)}")
@@ -58,7 +60,7 @@ def run():
         if os.getenv("SUB_FB_BACKFILL_DAYS"):
             logging.info("Insights backfill mode: skipping current-state resources")
         else:
-            pipeline.run([source(creds, group_name) for source in all_sources[1:]])
+            run_structural_resources(pipeline, all_sources[1:], creds, group_name)
 
         if idx < len(accounts) - 1 and delay_seconds > 0:
             logging.info(
@@ -67,11 +69,6 @@ def run():
             )
             time.sleep(delay_seconds)
 
-    partial_accounts = get_partial_creative_accounts()
-    if partial_accounts:
-        raise RuntimeError(
-            "Subscription Facebook creatives were only partially loaded for account(s): "
-            + ", ".join(partial_accounts)
-        )
+    raise_for_partial_resources("Subscription Facebook")
 
     logging.info("subscription Facebook Ads pipeline completed successfully.")

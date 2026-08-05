@@ -39,6 +39,7 @@ class MetaUsageSnapshot:
     reset_seconds: Optional[int]
     access_tier: Optional[str]
     header_names: tuple[str, ...]
+    utilization_by_header: tuple[tuple[str, float], ...]
 
 
 def _get_int_env(name: str, default: int) -> int:
@@ -80,6 +81,7 @@ def parse_usage_headers(headers: Mapping[str, str]) -> Optional[MetaUsageSnapsho
     reset_seconds: Optional[int] = None
     access_tier: Optional[str] = None
     seen: list[str] = []
+    utilization_by_header: list[tuple[str, float]] = []
 
     for header_name in _USAGE_HEADER_NAMES:
         raw = _get_header(headers, header_name)
@@ -92,11 +94,12 @@ def parse_usage_headers(headers: Mapping[str, str]) -> Optional[MetaUsageSnapsho
             continue
 
         seen.append(header_name)
+        header_utilization = 0.0
         for entry in _flatten_usage_entries(payload):
             for field in _UTILIZATION_FIELDS:
                 value = entry.get(field)
                 if isinstance(value, (int, float)):
-                    utilization = max(utilization, float(value))
+                    header_utilization = max(header_utilization, float(value))
 
             regain_minutes = entry.get("estimated_time_to_regain_access")
             if isinstance(regain_minutes, (int, float)) and regain_minutes > 0:
@@ -112,6 +115,9 @@ def parse_usage_headers(headers: Mapping[str, str]) -> Optional[MetaUsageSnapsho
             if isinstance(tier, str) and tier:
                 access_tier = tier
 
+        utilization = max(utilization, header_utilization)
+        utilization_by_header.append((header_name, header_utilization))
+
     if not seen:
         return None
     return MetaUsageSnapshot(
@@ -119,6 +125,7 @@ def parse_usage_headers(headers: Mapping[str, str]) -> Optional[MetaUsageSnapsho
         reset_seconds=reset_seconds,
         access_tier=access_tier,
         header_names=tuple(seen),
+        utilization_by_header=tuple(utilization_by_header),
     )
 
 
@@ -132,13 +139,19 @@ def observe_meta_response(response: Any, *_args: Any, **_kwargs: Any) -> Any:
     request = getattr(response, "request", None)
     request_url = getattr(request, "url", "") or ""
     endpoint = urlsplit(request_url).path or "unknown"
+    usage = ",".join(
+        f"{header_name}={header_utilization:.1f}%"
+        for header_name, header_utilization in snapshot.utilization_by_header
+    )
     logging.info(
-        "Meta quota endpoint=%s status=%s utilization=%.1f%% tier=%s headers=%s",
+        "Meta quota endpoint=%s status=%s usage=%s max_utilization=%.1f%% "
+        "reset_seconds=%s tier=%s",
         endpoint,
         getattr(response, "status_code", "unknown"),
+        usage,
         snapshot.utilization_pct,
+        snapshot.reset_seconds if snapshot.reset_seconds is not None else "unknown",
         snapshot.access_tier or "unknown",
-        ",".join(snapshot.header_names),
     )
 
     status_code = int(getattr(response, "status_code", 0) or 0)

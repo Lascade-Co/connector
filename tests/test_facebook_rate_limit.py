@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from facebook_ads import rate_limit
+from pipelines.facebook import rate_limit as pipeline_rate_limit
 
 
 def _response(headers, status_code=200):
@@ -45,6 +46,15 @@ class MetaUsageHeaderTests(unittest.TestCase):
         self.assertEqual(snapshot.utilization_pct, 96.0)
         self.assertEqual(snapshot.reset_seconds, 240)
         self.assertEqual(snapshot.access_tier, "standard_access")
+        self.assertEqual(
+            snapshot.utilization_by_header,
+            (
+                ("x-business-use-case-usage", 91.0),
+                ("x-ad-account-usage", 88.0),
+                ("x-app-usage", 74.0),
+                ("x-fb-ads-insights-throttle", 96.0),
+            ),
+        )
         self.assertEqual(
             snapshot.header_names,
             (
@@ -109,6 +119,33 @@ class MetaUsageHeaderTests(unittest.TestCase):
 
         self.assertIs(returned, response)
         sleep.assert_not_called()
+
+    def test_reset_duration_seconds_are_not_rounded_up_to_a_minute(self):
+        headers = {
+            "x-ad-account-usage": json.dumps(
+                {"acc_id_util_pct": 100, "reset_time_duration": 15}
+            )
+        }
+
+        self.assertEqual(
+            pipeline_rate_limit.parse_wait_seconds(headers, default=300),
+            15,
+        )
+
+    def test_quota_log_keeps_header_families_separate(self):
+        response = _response(
+            {
+                "x-business-use-case-usage": json.dumps({"call_count": 20}),
+                "x-ad-account-usage": json.dumps({"acc_id_util_pct": 57}),
+            }
+        )
+
+        with self.assertLogs(level="INFO") as logs:
+            rate_limit.observe_meta_response(response)
+
+        rendered = "\n".join(logs.output)
+        self.assertIn("x-business-use-case-usage=20.0%", rendered)
+        self.assertIn("x-ad-account-usage=57.0%", rendered)
 
 
 if __name__ == "__main__":

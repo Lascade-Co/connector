@@ -7,6 +7,7 @@ from pipelines.facebook.creative_status import (
     reset_partial_creative_accounts,
 )
 from pipelines.facebook.rate_limit import stream_with_rate_limit_guard
+from pipelines.facebook.structural import load_structural_resource
 
 # ---------------------------------------------------------------------------
 # STRUCTURAL OBJECTS
@@ -15,29 +16,35 @@ from pipelines.facebook.rate_limit import stream_with_rate_limit_guard
 
 @dlt.resource(name="ads", primary_key="id", write_disposition="merge")
 def ads_all(accounts, group_name: str):
-    for cred in accounts:
-        for r in ads_src(cred).ads:  # add fields=... if you like
-            r["account_id"] = cred["account_id"]
-            r["managing_system"] = group_name
-            yield r
+    yield from load_structural_resource(
+        accounts,
+        group_name,
+        source_factory=ads_src,
+        source_attribute="ads",
+        resource_name="ads",
+    )
 
 
 @dlt.resource(name="campaigns", primary_key="id", write_disposition="merge")
 def campaigns_all(accounts, group_name: str):
-    for cred in accounts:
-        for r in ads_src(cred).campaigns:
-            r["account_id"] = cred["account_id"]
-            r["managing_system"] = group_name
-            yield r
+    yield from load_structural_resource(
+        accounts,
+        group_name,
+        source_factory=ads_src,
+        source_attribute="campaigns",
+        resource_name="campaigns",
+    )
 
 
 @dlt.resource(name="ad_sets", primary_key="id", write_disposition="merge")
 def adsets_all(accounts, group_name: str):
-    for cred in accounts:
-        for r in ads_src(cred).ad_sets:
-            r["account_id"] = cred["account_id"]
-            r["managing_system"] = group_name
-            yield r
+    yield from load_structural_resource(
+        accounts,
+        group_name,
+        source_factory=ads_src,
+        source_attribute="ad_sets",
+        resource_name="ad_sets",
+    )
 
 
 def _stream_creatives(cred, group_name: str):

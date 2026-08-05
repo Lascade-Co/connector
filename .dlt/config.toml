@@ -5,6 +5,11 @@ log_level="WARNING"  # the system log level of dlt
 # use the dlthub_telemetry setting to enable/disable anonymous usage data reporting, see https://dlthub.com/docs/reference/telemetry
 dlthub_telemetry = false
 
+[load]
+# clickhouse-connect's shared HTTP pool defaults to 8 connections. Keep load
+# concurrency below that ceiling so loader jobs do not discard pooled sockets.
+workers = 4
+
 [sources.facebook_ads]
 account_id = "344051707969015" # please set me up!
 

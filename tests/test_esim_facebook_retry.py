@@ -126,6 +126,11 @@ class EsimFacebookRunnerTests(unittest.TestCase):
                 "group_name": group_name,
             }
 
+        def run_structural(_pipeline, resources, creds, group_name):
+            for resource in resources:
+                item = resource(creds, group_name)
+                events.append((item["kind"], item["account_id"]))
+
         with (
             patch.object(
                 esim_facebook_pipeline.sys,
@@ -143,6 +148,12 @@ class EsimFacebookRunnerTests(unittest.TestCase):
                 "run_insights_in_windows",
                 side_effect=run_insights,
             ),
+            patch.object(
+                esim_facebook_pipeline,
+                "run_structural_resources",
+                side_effect=run_structural,
+            ),
+            patch.object(esim_facebook_pipeline, "raise_for_partial_resources"),
             patch.object(esim_facebook_pipeline.dlt, "pipeline") as pipeline_factory,
             patch.dict(
                 esim_facebook_pipeline.os.environ,
@@ -162,14 +173,6 @@ class EsimFacebookRunnerTests(unittest.TestCase):
                 side_effect=lambda seconds: events.append(("sleep", seconds)),
             ) as sleep,
         ):
-
-            def record_run(resources):
-                batch = resources if isinstance(resources, list) else [resources]
-                events.extend(
-                    (resource["kind"], resource["account_id"]) for resource in batch
-                )
-
-            pipeline_factory.return_value.run.side_effect = record_run
             esim_facebook_pipeline.run()
 
         sleep.assert_called_once_with(7)
@@ -207,11 +210,14 @@ class EsimFacebookRunnerTests(unittest.TestCase):
             patch.object(
                 esim_facebook_pipeline, "run_insights_in_windows"
             ) as run_insights,
+            patch.object(
+                esim_facebook_pipeline, "run_structural_resources"
+            ) as run_structural,
             patch.object(esim_facebook_pipeline.dlt, "pipeline") as pipeline_factory,
             patch.object(
                 esim_facebook_pipeline,
-                "get_partial_creative_accounts",
-                return_value=("act-1",),
+                "raise_for_partial_resources",
+                side_effect=RuntimeError("act-1"),
             ),
             patch.dict(
                 esim_facebook_pipeline.os.environ,
@@ -229,9 +235,7 @@ class EsimFacebookRunnerTests(unittest.TestCase):
                 esim_facebook_pipeline.run()
 
         run_insights.assert_called_once()
-        pipeline_factory.return_value.run.assert_called_once_with(
-            [{"kind": "structural"}]
-        )
+        run_structural.assert_called_once()
 
 
 if __name__ == "__main__":
