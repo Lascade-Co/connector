@@ -80,7 +80,7 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 
 ### Rate Limiting & Scaling
 - Facebook A/B/C matrices mix independent `d1`/`m4`/`d2` families, spacing each family's suffix shards by roughly one hour; account delays default to zero
-- Insights use bounded async date windows and split incompatible unique metrics; quota failures surface without stacked retries
+- Insights use separately committed async date windows, 100-row result pages, and split incompatible unique metrics; quota failures surface without stacked retries
 - Creatives are incremental Monday-Saturday and fully reconciled Sunday or with manual workflow mode `full`
 - Facebook historical backfills load Insights only and serialize multi-group matrices; current-state resources use the daily/manual Facebook workflows
 - Local Facebook, eSIM Facebook, and subscription Facebook execution is restricted to exact group `d1c`; all other groups are GitHub Actions-only

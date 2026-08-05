@@ -20,7 +20,12 @@ from .helpers import (
     get_ads_account,
 )
 from .exceptions import InsightsJobFailed
-from .insights import iter_date_windows, merge_report_rows, split_insight_fields
+from .insights import (
+    INSIGHTS_WINDOW_CHECKPOINT,
+    iter_date_windows,
+    merge_report_rows,
+    split_insight_fields,
+)
 from .rate_limit import RATE_LIMIT_CODES
 from .settings import (
     DEFAULT_AD_FIELDS,
@@ -88,11 +93,11 @@ def _get_int_env(name: str, default: int) -> int:
 
 @dlt.source(name="facebook_ads")
 def facebook_ads_source(
-        account_id: str = dlt.config.value,
-        access_token: str = dlt.secrets.value,
-        chunk_size: int = 200,
-        request_timeout: float = 300.0,
-        app_api_version: str = None,
+    account_id: str = dlt.config.value,
+    access_token: str = dlt.secrets.value,
+    chunk_size: int = 200,
+    request_timeout: float = 300.0,
+    app_api_version: str = None,
 ) -> Sequence[DltResource]:
     """Returns a list of resources to load campaigns, ad sets, ads, creatives and ad leads data from Facebook Marketing API.
 
@@ -119,27 +124,27 @@ def facebook_ads_source(
 
     @dlt.resource(primary_key="id", write_disposition="replace")
     def campaigns(
-            fields: Sequence[str] = DEFAULT_CAMPAIGN_FIELDS, states: Sequence[str] = None
+        fields: Sequence[str] = DEFAULT_CAMPAIGN_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
         yield get_data_chunked(account.get_campaigns, fields, states, chunk_size)
 
     @dlt.resource(primary_key="id", write_disposition="replace")
     def ads(
-            fields: Sequence[str] = DEFAULT_AD_FIELDS, states: Sequence[str] = None
+        fields: Sequence[str] = DEFAULT_AD_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
         yield get_data_chunked(account.get_ads, fields, states, chunk_size)
 
     @dlt.resource(primary_key="id", write_disposition="replace")
     def ad_sets(
-            fields: Sequence[str] = DEFAULT_ADSET_FIELDS, states: Sequence[str] = None
+        fields: Sequence[str] = DEFAULT_ADSET_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
         yield get_data_chunked(account.get_ad_sets, fields, states, chunk_size)
 
     @dlt.transformer(primary_key="id", write_disposition="replace", selected=True)
     def leads(
-            items: TDataItems,
-            fields: Sequence[str] = DEFAULT_LEAD_FIELDS,
-            states: Sequence[str] = None,
+        items: TDataItems,
+        fields: Sequence[str] = DEFAULT_LEAD_FIELDS,
+        states: Sequence[str] = None,
     ) -> Iterator[TDataItems]:
         for item in items:
             ad = Ad(item["id"])
@@ -147,7 +152,7 @@ def facebook_ads_source(
 
     @dlt.resource(primary_key="id", write_disposition="replace")
     def ad_creatives(
-            fields: Sequence[str] = DEFAULT_ADCREATIVE_FIELDS, states: Sequence[str] = None
+        fields: Sequence[str] = DEFAULT_ADCREATIVE_FIELDS, states: Sequence[str] = None
     ) -> Iterator[TDataItems]:
         yield from iter_creatives(account, account_id, fields, states)
 
@@ -156,19 +161,22 @@ def facebook_ads_source(
 
 @dlt.source(name="facebook_ads")
 def facebook_insights_source(
-        account_id: str = dlt.config.value,
-        access_token: str = dlt.secrets.value,
-        initial_load_past_days: int = 30,
-        fields: Sequence[str] = DEFAULT_INSIGHT_FIELDS,
-        attribution_window_days_lag: int = 7,
-        time_increment_days: int = 1,
-        breakdowns: TInsightsBreakdownOptions = "ads_insights",
-        action_breakdowns: Sequence[str] = ALL_ACTION_BREAKDOWNS,
-        level: TInsightsLevels = "ad",
-        action_attribution_windows: Sequence[str] = ALL_ACTION_ATTRIBUTION_WINDOWS,
-        batch_size: int = 500,
-        request_timeout: int = 300,
-        app_api_version: str = None,
+    account_id: str = dlt.config.value,
+    access_token: str = dlt.secrets.value,
+    initial_load_past_days: int = 30,
+    fields: Sequence[str] = DEFAULT_INSIGHT_FIELDS,
+    attribution_window_days_lag: int = 7,
+    time_increment_days: int = 1,
+    breakdowns: TInsightsBreakdownOptions = "ads_insights",
+    action_breakdowns: Sequence[str] = ALL_ACTION_BREAKDOWNS,
+    level: TInsightsLevels = "ad",
+    action_attribution_windows: Sequence[str] = ALL_ACTION_ATTRIBUTION_WINDOWS,
+    batch_size: int = 500,
+    result_page_size: int = 100,
+    request_timeout: int = 300,
+    app_api_version: str = None,
+    report_start_date: str = None,
+    report_end_date: str = None,
 ) -> DltResource:
     """Incrementally loads insight reports with defined granularity level, fields, breakdowns etc.
 
@@ -190,9 +198,12 @@ def facebook_insights_source(
         action_breakdowns (Sequence[str], optional): Action aggregation types. See settings.py for details. Defaults to ALL_ACTION_BREAKDOWNS.
         level (TInsightsLevels, optional): The granularity level. Defaults to "ad".
         action_attribution_windows (Sequence[str], optional): Attribution windows for actions. Defaults to ALL_ACTION_ATTRIBUTION_WINDOWS.
-        batch_size (int, optional): Page size when reading data from particular report. Defaults to 500.
+        batch_size (int, optional): Page size submitted with the async report job. Defaults to 500.
+        result_page_size (int, optional): Page size used to download a completed report. Defaults to 100.
         request_timeout (int, optional): Connection timeout. Defaults to 300.
         app_api_version(str, optional): A version of the facebook api required by the app for which the access tokens were issued ie. 'v17.0'. Defaults to the facebook_business library default version
+        report_start_date (str, optional): Inclusive lower bound for one independently loaded report window.
+        report_end_date (str, optional): Inclusive upper bound for one independently loaded report window.
 
     Returns:
         DltResource: facebook_insights
@@ -212,10 +223,18 @@ def facebook_insights_source(
         "FB_INSIGHTS_MAX_ASYNC_SLEEP_SECONDS", 60
     )
     insights_window_days = max(1, _get_int_env("FB_INSIGHTS_WINDOW_DAYS", 8))
+    result_page_size = max(
+        1, _get_int_env("FB_INSIGHTS_RESULT_PAGE_SIZE", result_page_size)
+    )
+
+    if (report_start_date is None) != (report_end_date is None):
+        raise ValueError(
+            "report_start_date and report_end_date must either both be set or both be omitted"
+        )
 
     # we load with a defined lag
     initial_load_start_date = pendulum.today().subtract(days=initial_load_past_days)
-    initial_load_start_date_str = initial_load_start_date.isoformat()
+    initial_load_start_date_str = initial_load_start_date.to_date_string()
 
     @dlt.resource(
         name=f"facebook_insights_{account_id}",
@@ -224,12 +243,26 @@ def facebook_insights_source(
         columns=INSIGHT_FIELDS_TYPES,
     )
     def facebook_insights(
-            date_start: dlt.sources.incremental[str] = dlt.sources.incremental(
-                "date_start", initial_value=initial_load_start_date_str
-            )
+        date_start: dlt.sources.incremental[str] = dlt.sources.incremental(
+            "date_start", initial_value=initial_load_start_date_str
+        )
     ) -> Iterator[TDataItems]:
         start_date = get_start_date(date_start, attribution_window_days_lag)
         end_date = pendulum.now()
+        if report_start_date is not None:
+            start_date = pendulum.parse(report_start_date)
+            end_date = pendulum.parse(report_end_date)
+            retention_start = pendulum.today().subtract(
+                months=FACEBOOK_INSIGHTS_RETENTION_PERIOD
+            )
+            start_date = max(start_date, retention_start)
+            if start_date > end_date:
+                raise ValueError(
+                    f"Facebook Insights report start {start_date} is after end {end_date}"
+                )
+            # Keep dlt's incremental filter aligned with the explicit API range.
+            # Its persisted last_value still advances monotonically after load.
+            date_start.start_value = start_date.to_date_string()
 
         requested_fields = list(
             set(fields)
@@ -258,9 +291,7 @@ def facebook_insights_source(
                 },
             }
             if _ACTION_INSIGHT_FIELDS.intersection(report_fields):
-                query["action_attribution_windows"] = list(
-                    action_attribution_windows
-                )
+                query["action_attribution_windows"] = list(action_attribution_windows)
             try:
                 job = execute_job(
                     account.get_insights(params=query, is_async=True),
@@ -270,7 +301,7 @@ def facebook_insights_source(
                 )
                 return [
                     process_report_item(item)
-                    for item in job.get_result(params={"limit": batch_size})
+                    for item in job.get_result(params={"limit": result_page_size})
                 ]
             except InsightsJobFailed as exc:
                 if exc.error_code in RATE_LIMIT_CODES:
@@ -288,19 +319,25 @@ def facebook_insights_source(
                     report_start.to_date_string(),
                     report_end.to_date_string(),
                 )
-                return fetch_report(report_fields, report_start, left_end) + fetch_report(
-                    report_fields, right_start, report_end
-                )
+                return fetch_report(
+                    report_fields, report_start, left_end
+                ) + fetch_report(report_fields, right_start, report_end)
 
-        for window_start, window_end in iter_date_windows(
-            start_date, end_date, insights_window_days
-        ):
+        windows = (
+            ((start_date, end_date),)
+            if report_start_date is not None
+            else iter_date_windows(start_date, end_date, insights_window_days)
+        )
+        for window_start, window_end in windows:
             report_groups = [fetch_report(core_fields, window_start, window_end)]
             if unique_fields:
                 report_groups.append(
                     fetch_report(unique_fields, window_start, window_end)
                 )
             yield merge_report_rows(report_groups)
+            dlt.current.resource_state()[
+                INSIGHTS_WINDOW_CHECKPOINT
+            ] = window_end.to_date_string()
 
     # Attach a lightweight map to flatten complex array/object fields to scalar columns
     return facebook_insights.add_map(flatten_facebook_insights, insert_at=1)

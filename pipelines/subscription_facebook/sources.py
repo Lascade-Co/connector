@@ -11,6 +11,7 @@ from pipelines.subscription_facebook.raw_sources import ads_src, insights_src
 # STRUCTURAL OBJECTS
 # ---------------------------------------------------------------------------
 
+
 @dlt.resource(name="ads", primary_key="id", write_disposition="merge")
 def ads_all(accounts, group_name: str):
     for cred in accounts:
@@ -55,9 +56,11 @@ def _stream_creatives(cred, group_name: str):
         row["managing_system"] = group_name
         yield row
 
+
 # ---------------------------------------------------------------------------
 # METRIC FACT TABLE
 # ---------------------------------------------------------------------------
+
 
 def _subscribe_revenue(conversion_values):
     # Mirrors the reference Django command: sum conversion_values where
@@ -83,13 +86,24 @@ def _subscribe_revenue(conversion_values):
     primary_key=["account_id", "date_start", "ad_id"],
     write_disposition="merge",
 )
-def insights_all(accounts, group_name: str):
+def insights_all(
+    accounts,
+    group_name: str,
+    *,
+    report_start_date=None,
+    report_end_date=None,
+):
     for cred in accounts:
-        for r in insights_src(cred):
+        for r in insights_src(
+            cred,
+            report_start_date=report_start_date,
+            report_end_date=report_end_date,
+        ):
             r["account_id"] = cred["account_id"]
             r["managing_system"] = group_name
             r["subscription_revenue"] = _subscribe_revenue(r.get("conversion_values"))
             yield r
+
 
 # ---------------------------------------------------------------------------
 # LIST OF RESOURCES

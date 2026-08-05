@@ -109,15 +109,15 @@ class EsimFacebookCreativeParkingTests(unittest.TestCase):
 
 
 class EsimFacebookRunnerTests(unittest.TestCase):
-    def test_runs_insights_before_structural_resources_and_delays_between_accounts(self):
+    def test_runs_insights_before_structural_resources_and_delays_between_accounts(
+        self,
+    ):
         events = []
 
-        def insights(creds, group_name):
-            return {
-                "kind": "insights",
-                "account_id": creds[0]["account_id"],
-                "group_name": group_name,
-            }
+        def run_insights(_pipeline, _resource, creds, _group_name, **_kwargs):
+            events.append(("insights", creds[0]["account_id"]))
+
+        insights = object()
 
         def structural(creds, group_name):
             return {
@@ -138,6 +138,11 @@ class EsimFacebookRunnerTests(unittest.TestCase):
                 return_value=({"token": "secret"}, ["act-first", "act-second"]),
             ),
             patch.object(esim_facebook_pipeline, "all_sources", [insights, structural]),
+            patch.object(
+                esim_facebook_pipeline,
+                "run_insights_in_windows",
+                side_effect=run_insights,
+            ),
             patch.object(esim_facebook_pipeline.dlt, "pipeline") as pipeline_factory,
             patch.dict(
                 esim_facebook_pipeline.os.environ,
@@ -157,9 +162,12 @@ class EsimFacebookRunnerTests(unittest.TestCase):
                 side_effect=lambda seconds: events.append(("sleep", seconds)),
             ) as sleep,
         ):
+
             def record_run(resources):
                 batch = resources if isinstance(resources, list) else [resources]
-                events.extend((resource["kind"], resource["account_id"]) for resource in batch)
+                events.extend(
+                    (resource["kind"], resource["account_id"]) for resource in batch
+                )
 
             pipeline_factory.return_value.run.side_effect = record_run
             esim_facebook_pipeline.run()
@@ -191,8 +199,14 @@ class EsimFacebookRunnerTests(unittest.TestCase):
             patch.object(
                 esim_facebook_pipeline,
                 "all_sources",
-                [lambda *_args: {"kind": "insights"}, lambda *_args: {"kind": "structural"}],
+                [
+                    lambda *_args: {"kind": "insights"},
+                    lambda *_args: {"kind": "structural"},
+                ],
             ),
+            patch.object(
+                esim_facebook_pipeline, "run_insights_in_windows"
+            ) as run_insights,
             patch.object(esim_facebook_pipeline.dlt, "pipeline") as pipeline_factory,
             patch.object(
                 esim_facebook_pipeline,
@@ -214,7 +228,10 @@ class EsimFacebookRunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "act-1"):
                 esim_facebook_pipeline.run()
 
-        self.assertEqual(pipeline_factory.return_value.run.call_count, 2)
+        run_insights.assert_called_once()
+        pipeline_factory.return_value.run.assert_called_once_with(
+            [{"kind": "structural"}]
+        )
 
 
 if __name__ == "__main__":

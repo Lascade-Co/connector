@@ -12,10 +12,11 @@ from pipelines.esim_facebook.raw_sources import ads_src, insights_src
 # STRUCTURAL OBJECTS
 # ---------------------------------------------------------------------------
 
+
 @dlt.resource(name="ads", primary_key="id", write_disposition="merge")
 def ads_all(accounts, group_name: str):
     for cred in accounts:
-        for r in ads_src(cred).ads:            # add fields=... if you like
+        for r in ads_src(cred).ads:  # add fields=... if you like
             r["account_id"] = cred["account_id"]
             r["managing_system"] = group_name
             yield r
@@ -58,36 +59,49 @@ def creatives_all(accounts, group_name: str):
         on_partial=mark_partial_creative_account,
     )
 
+
 # ---------------------------------------------------------------------------
 # METRIC FACT TABLE
 # ---------------------------------------------------------------------------
+
 
 @dlt.resource(
     name="insights",
     primary_key=["account_id", "date_start", "ad_id"],
     write_disposition="merge",
     columns={
-        "date_start":    {"data_type": "date"},
-        "date_stop":     {"data_type": "date"},
-        "reach":         {"data_type": "bigint"},
-        "clicks":        {"data_type": "bigint"},
+        "date_start": {"data_type": "date"},
+        "date_stop": {"data_type": "date"},
+        "reach": {"data_type": "bigint"},
+        "clicks": {"data_type": "bigint"},
         "unique_clicks": {"data_type": "bigint"},
-        "impressions":   {"data_type": "bigint"},
-        "cpc":           {"data_type": "double"},
-        "cpm":           {"data_type": "double"},
-        "cpp":           {"data_type": "double"},
-        "ctr":           {"data_type": "double"},
-        "unique_ctr":    {"data_type": "double"},
-        "frequency":     {"data_type": "double"},
+        "impressions": {"data_type": "bigint"},
+        "cpc": {"data_type": "double"},
+        "cpm": {"data_type": "double"},
+        "cpp": {"data_type": "double"},
+        "ctr": {"data_type": "double"},
+        "unique_ctr": {"data_type": "double"},
+        "frequency": {"data_type": "double"},
     },
 )
-def insights_all(accounts, group_name: str):
+def insights_all(
+    accounts,
+    group_name: str,
+    *,
+    report_start_date=None,
+    report_end_date=None,
+):
     for cred in accounts:
         # insights_src returns a single DltResource whose name is dynamic
-        for r in insights_src(cred):
+        for r in insights_src(
+            cred,
+            report_start_date=report_start_date,
+            report_end_date=report_end_date,
+        ):
             r["account_id"] = cred["account_id"]
             r["managing_system"] = group_name
             yield r
+
 
 # ---------------------------------------------------------------------------
 # LIST OF RESOURCES

@@ -3,10 +3,12 @@ import os
 
 
 def ads_src(cred):  # structure data
-    return facebook_ads_source(account_id=cred["account_id"], access_token=cred["token"])
+    return facebook_ads_source(
+        account_id=cred["account_id"], access_token=cred["token"]
+    )
 
 
-def insights_src(cred):  # metrics
+def insights_src(cred, *, report_start_date=None, report_end_date=None):  # metrics
     # Allow manual backfill to override initial window via env
     backfill_days = os.getenv("FB_BACKFILL_DAYS")
     kwargs = {}
@@ -23,5 +25,7 @@ def insights_src(cred):  # metrics
         account_id=cred["account_id"],
         access_token=cred["token"],
         attribution_window_days_lag=7,
+        report_start_date=report_start_date,
+        report_end_date=report_end_date,
         **kwargs,
     )

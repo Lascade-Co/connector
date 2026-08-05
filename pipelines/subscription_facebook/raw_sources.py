@@ -7,10 +7,12 @@ INSIGHT_FIELDS = DEFAULT_INSIGHT_FIELDS + ("conversions", "conversion_values")
 
 
 def ads_src(cred):  # structure data
-    return facebook_ads_source(account_id=cred["account_id"], access_token=cred["token"])
+    return facebook_ads_source(
+        account_id=cred["account_id"], access_token=cred["token"]
+    )
 
 
-def insights_src(cred):  # metrics
+def insights_src(cred, *, report_start_date=None, report_end_date=None):  # metrics
     backfill_days = os.getenv("SUB_FB_BACKFILL_DAYS")
     kwargs = {}
     if backfill_days:
@@ -26,5 +28,7 @@ def insights_src(cred):  # metrics
         access_token=cred["token"],
         attribution_window_days_lag=7,
         fields=INSIGHT_FIELDS,
+        report_start_date=report_start_date,
+        report_end_date=report_end_date,
         **kwargs,
     )

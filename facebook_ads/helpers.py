@@ -10,7 +10,7 @@ import humanize
 import pendulum
 from dlt.common import logger
 from dlt.common.configuration.inject import with_config
-from dlt.common.time import ensure_pendulum_datetime
+from dlt.common.time import ensure_pendulum_datetime_utc
 from dlt.common.typing import DictStrAny, TDataItem, TDataItems
 from dlt.sources.helpers import requests
 from dlt.sources.helpers.requests import Client
@@ -35,7 +35,7 @@ def get_start_date(
     """
     Get the start date for incremental loading of Facebook Insights data.
     """
-    start_date: pendulum.DateTime = ensure_pendulum_datetime(
+    start_date: pendulum.DateTime = ensure_pendulum_datetime_utc(
         incremental_start_date.start_value
     ).subtract(days=attribution_window_days_lag)
 
@@ -52,10 +52,10 @@ def get_start_date(
             min_start_date,
         )
         start_date = min_start_date
-        incremental_start_date.start_value = min_start_date
+        incremental_start_date.start_value = min_start_date.to_date_string()
 
     # lag the incremental start date by attribution window lag
-    incremental_start_date.start_value = start_date.isoformat()
+    incremental_start_date.start_value = start_date.to_date_string()
     return start_date
 
 
@@ -81,6 +81,7 @@ from .settings import (
     ACTION_VALUES_PREFIX,
     CPA_PREFIX,
 )
+
 
 def _first_numeric(value: Any) -> Optional[float]:
     try:
@@ -131,7 +132,9 @@ def _expand_action_list(
     return created
 
 
-def _flatten_values_series(item: DictStrAny, field_name: str, out_key: str = None) -> Optional[str]:
+def _flatten_values_series(
+    item: DictStrAny, field_name: str, out_key: str = None
+) -> Optional[str]:
     """Flatten FB 'values' series fields into a single scalar using the first value.
 
     Example shape:
@@ -151,7 +154,9 @@ def _flatten_values_series(item: DictStrAny, field_name: str, out_key: str = Non
             # only remove the source if target differs
             if target != field_name:
                 item.pop(field_name, None)
-            logger.info("flatten_facebook_insights: %s -> %s=%s", field_name, target, num)
+            logger.info(
+                "flatten_facebook_insights: %s -> %s=%s", field_name, target, num
+            )
             return target
     return None
 
@@ -163,10 +168,14 @@ def flatten_facebook_insights(item: DictStrAny) -> DictStrAny:
     """
     # Action-type lists
     _expand_action_list(item, "actions", SELECTED_ACTION_TYPES, ACTIONS_PREFIX)
-    _expand_action_list(item, "action_values", SELECTED_ACTION_VALUE_TYPES, ACTION_VALUES_PREFIX)
+    _expand_action_list(
+        item, "action_values", SELECTED_ACTION_VALUE_TYPES, ACTION_VALUES_PREFIX
+    )
     _expand_action_list(item, "cost_per_action_type", SELECTED_CPA_TYPES, CPA_PREFIX)
     _expand_action_list(item, "website_ctr", SELECTED_WEBSITE_CTR_TYPES, "website_ctr_")
-    _expand_action_list(item, "purchase_roas", SELECTED_PURCHASE_ROAS_TYPES, "purchase_roas_")
+    _expand_action_list(
+        item, "purchase_roas", SELECTED_PURCHASE_ROAS_TYPES, "purchase_roas_"
+    )
 
     # Other complex fields
     _flatten_values_series(item, "cost_per_result")  # keep same key as scalar

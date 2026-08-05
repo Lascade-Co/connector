@@ -12,10 +12,11 @@ from pipelines.facebook.rate_limit import stream_with_rate_limit_guard
 # STRUCTURAL OBJECTS
 # ---------------------------------------------------------------------------
 
+
 @dlt.resource(name="ads", primary_key="id", write_disposition="merge")
 def ads_all(accounts, group_name: str):
     for cred in accounts:
-        for r in ads_src(cred).ads:            # add fields=... if you like
+        for r in ads_src(cred).ads:  # add fields=... if you like
             r["account_id"] = cred["account_id"]
             r["managing_system"] = group_name
             yield r
@@ -58,22 +59,35 @@ def creatives_all(accounts, group_name: str):
         on_partial=mark_partial_creative_account,
     )
 
+
 # ---------------------------------------------------------------------------
 # METRIC FACT TABLE
 # ---------------------------------------------------------------------------
+
 
 @dlt.resource(
     name="insights",
     primary_key=["account_id", "date_start", "ad_id"],
     write_disposition="merge",
 )
-def insights_all(accounts, group_name: str):
+def insights_all(
+    accounts,
+    group_name: str,
+    *,
+    report_start_date=None,
+    report_end_date=None,
+):
     for cred in accounts:
         # insights_src returns a single DltResource whose name is dynamic
-        for r in insights_src(cred):
+        for r in insights_src(
+            cred,
+            report_start_date=report_start_date,
+            report_end_date=report_end_date,
+        ):
             r["account_id"] = cred["account_id"]
             r["managing_system"] = group_name
             yield r
+
 
 # ---------------------------------------------------------------------------
 # LIST OF RESOURCES

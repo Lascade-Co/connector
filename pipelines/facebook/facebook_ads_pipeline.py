@@ -8,6 +8,7 @@ from pipelines.facebook.sources import (
     get_partial_creative_accounts,
     reset_partial_creative_accounts,
 )
+from pipelines.facebook.runner import clickhouse_destination, run_insights_in_windows
 from utils import enforce_local_facebook_group, get_for_group
 
 
@@ -26,9 +27,10 @@ def run():
     suffix = os.getenv("PIPELINE_NAME_SUFFIX", "")
     pipeline = dlt.pipeline(
         pipeline_name=f"fb_ads_{group_name}{suffix}",  # <- each group has its *own* state dir
-        destination="clickhouse",
-        dataset_name="fb"
+        destination=clickhouse_destination(),
+        dataset_name="fb",
     )
+    pipeline.sync_destination()
 
     delay_env = os.getenv("FB_ACCOUNT_DELAY_SECONDS", "0")
     try:
@@ -43,7 +45,13 @@ def run():
     for idx, account_id in enumerate(accounts):
         creds = [{"account_id": account_id, "token": group["token"]}]
         logging.info("Running Facebook Ads pipeline for account: %s", account_id)
-        pipeline.run(all_sources[0](creds, group_name))
+        run_insights_in_windows(
+            pipeline,
+            all_sources[0],
+            creds,
+            group_name,
+            backfill_env_name="FB_BACKFILL_DAYS",
+        )
         if os.getenv("FB_BACKFILL_DAYS"):
             logging.info("Insights backfill mode: skipping current-state resources")
         else:
