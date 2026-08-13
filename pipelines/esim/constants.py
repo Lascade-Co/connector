@@ -31,8 +31,12 @@ DATASET_COLUMN_HINTS = {
 
 # Accept the old and additive contracts during the rolling deployment. A future
 # version must be reviewed before the connector advances its persisted state.
+#
+# 1.3 adds the Stripe-account dimension (payment_method, stripe_account_slug,
+# stripe_account_acct_id) — purely additive, and unhinted columns are inferred,
+# so no DATASET_COLUMN_HINTS entry is required for them.
 SUPPORTED_SCHEMA_VERSIONS = {
-    "orders": frozenset({"1.1", "1.2"}),
+    "orders": frozenset({"1.1", "1.2", "1.3"}),
 }
 
 DEFAULT_LIMIT = 500

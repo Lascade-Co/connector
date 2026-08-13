@@ -18,7 +18,7 @@ def _orders_dataset(schema_version: str) -> dict:
 
 class OrdersManifestTests(unittest.TestCase):
     def test_accepts_rolling_versions_and_adds_only_new_column_hints(self):
-        for version in ("1.1", "1.2"):
+        for version in ("1.1", "1.2", "1.3"):
             parsed = parse_manifest([_orders_dataset(version)])[0]
             self.assertEqual(parsed["schema_version"], version)
             self.assertEqual(

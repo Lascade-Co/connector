@@ -8,7 +8,6 @@ from pipelines.google_analytics import google_analytics_pipeline
 from pipelines.google_play import google_play_pipeline
 from pipelines.app_store import app_store_pipeline
 from pipelines.esim import esim_pipeline
-from pipelines.esim import order_fields_backfill_pipeline
 from pipelines.esim_facebook import esim_facebook_pipeline
 from pipelines.subscription_facebook import subscription_facebook_pipeline
 from pipelines.subscription_google import subscription_google_pipeline
@@ -33,8 +32,6 @@ if __name__ == "__main__":
         app_store_pipeline.run()
     elif sys.argv[1] == "esim":
         esim_pipeline.run()
-    elif sys.argv[1] == "esim_order_fields":
-        order_fields_backfill_pipeline.run()
     elif sys.argv[1] == "esim_facebook":
         esim_facebook_pipeline.run()
     elif sys.argv[1] == "subscription_facebook":
