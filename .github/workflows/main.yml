@@ -36,3 +36,21 @@ jobs:
 
       - name: Run main.py
         run: python main.py "db" "${{ matrix.group }}"
+
+      # This job does not route through _reusable-etl.yml, so it needs its own copy
+      # of the failure notification. Inert until SLACK_WEBHOOK_URL is set.
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          GROUP: ${{ matrix.group }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is not set; skipping failure notification."
+            exit 0
+          fi
+          jq -n --arg group "$GROUP" --arg url "$RUN_URL" \
+            '{text: ":rotating_light: ETL failed: *db replication* (group `\($group)`)\n\($url)"}' \
+          | curl -sS --max-time 10 -X POST -H 'Content-Type: application/json' \
+              --data @- "$SLACK_WEBHOOK_URL" || true

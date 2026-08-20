@@ -1,0 +1,31 @@
+name: Tests
+
+# The repo had no test workflow, so `tests/` only ever ran by hand. That is how a
+# pinned-schema regression reached the hourly eSIM run unnoticed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: 'pip'
+
+      # Most test modules import dlt / facebook_business at module scope, so a
+      # partial install shows up as collection errors rather than failures.
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -t . -v

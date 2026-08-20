@@ -117,3 +117,24 @@ jobs:
             export GOOGLE_PLAY_BACKFILL_MONTHS="$MONTHS"
           fi
           python main.py '${{ inputs.pipeline }}' '${{ inputs.group }}'
+
+      # These pipelines run unattended on a schedule (eSIM analytics is hourly),
+      # and nothing used to announce a failure — a broken run stayed invisible
+      # until someone opened the Actions tab. Inert until SLACK_WEBHOOK_URL is set,
+      # and `|| true` so a Slack outage can never mask the real ETL failure.
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PIPELINE: ${{ inputs.pipeline }}
+          GROUP: ${{ inputs.group }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is not set; skipping failure notification."
+            exit 0
+          fi
+          jq -n --arg pipeline "$PIPELINE" --arg group "$GROUP" --arg url "$RUN_URL" \
+            '{text: ":rotating_light: ETL failed: *\($pipeline)* (group `\($group)`)\n\($url)"}' \
+          | curl -sS --max-time 10 -X POST -H 'Content-Type: application/json' \
+              --data @- "$SLACK_WEBHOOK_URL" || true

@@ -90,6 +90,8 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 - Facebook historical backfills load Insights only and serialize multi-group matrices; current-state resources use the daily/manual Facebook workflows
 - Local Facebook, eSIM Facebook, and subscription Facebook execution is restricted to exact group `d1c`; all other groups are GitHub Actions-only
 - Max parallel: 1 per batch in GitHub Actions
+- **Scheduled runs alert on failure.** `_reusable-etl.yml` ends with an `if: failure()` step that posts the pipeline, group, and run URL to `SLACK_WEBHOOK_URL`. It is **inert until that repo secret is set** (logs a skip and exits 0) and ends in `|| true`, so a Slack outage can never mask the real ETL failure. Before this existed nothing announced a broken run — the hourly eSIM sync failed silently for as long as it took someone to open the Actions tab.
+- **`tests.yml` runs `python -m unittest discover -s tests -t .`** on push to `main`, PRs, and manual dispatch. The repo previously had no test workflow at all, so `tests/` only ran by hand. Test modules import `dlt`/`facebook_business` at module scope, so the job installs the full `requirements.txt` — a partial install surfaces as collection errors, not failures.
 
 ## GitHub Actions Workflows
 - `.github/workflows/_reusable-etl.yml` — Shared job template all pipelines use
@@ -109,7 +111,12 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 The esim project uses a separate ClickHouse database (`esim_db`) via the `clickhouse_esim` dlt destination.
 
 - **`pipelines/esim/`** — Analytics Export API pipeline. Manifest-driven: fetches dataset config (watermark fields, strategies, endpoints) from the backend's `/internal/analytics/exports/manifest/` at runtime. Most column types are auto-detected; additive order fields use explicit hints. Config in `secrets/esim.json`.
-- Order analytics remain one row per order. Schema 1.2 adds only `subtotal_eur`, `profit_eur`, `item_count`, `distinct_plan_count`, and `is_cart`; use the staging-only order-fields backfill before a targeted ClickHouse mutation.
+- Order analytics remain one row per order.
+- **Schema-version gating is on MAJOR, not exact match.** `SUPPORTED_SCHEMA_VERSIONS` in `pipelines/esim/constants.py` records the versions actually *reviewed* here; `manifest._resolve_schema_version` then accepts any **MINOR** of a reviewed **MAJOR** with a loud `SCHEMA DRIFT` warning, and hard-fails an unreviewed **MAJOR** (or a malformed version). Datasets absent from the dict are ungated. Reviewed today: orders `1.1`–`1.4`.
+  - Rationale: the backend bumps MINOR for additive columns only (1.2, 1.3, 1.4 all were) and dlt never retypes an existing column, so only *new* columns are at stake. Exact matching meant every additive backend field hard-stopped the **whole** hourly run (all datasets, not just orders) until someone edited the set — which is exactly what happened when the backend shipped orders `1.4`. A MAJOR bump can change or drop existing columns, so it stays gated.
+  - The one risk a MINOR bump carries is a **new money column**: the backend's `to_numeric` sends `Decimal` as a JSON float, so an unhinted one infers as `double`. That is why 1.2's money fields are pinned in `DATASET_COLUMN_HINTS` (still the only hinted columns). On a `SCHEMA DRIFT` warning, check the new fields and pin a decimal hint before adding the version to the reviewed set.
+  - Version history: `1.2` added `subtotal_eur`/`profit_eur`/`item_count`/`distinct_plan_count`/`is_cart`; `1.3` added `payment_method`/`stripe_account_slug`/`stripe_account_acct_id`; `1.4` added `support_resolution` and made wallet-compensated orders export `status='refunded'` — nothing reads refunds today, but if that changes, split real Stripe reversals (`support_resolution=''`) from wallet credits (`'compensated'`).
+  - The backend mirrors this contract in `analytics_export/views/manifest.py` and pins the version in `analytics_export/tests/test_orders.py`, so a bump there fails a test that names this file.
 - **`pipelines/esim_facebook/`** — Facebook Ads pipeline for esim. Same pattern as `pipelines/facebook/` but targets `clickhouse_esim`. Config in `secrets/esim_facebook.json`. Uses `ESIM_FB_*` env vars and the shared creative quota guard.
 
 ## PostgreSQL Replication Pipeline

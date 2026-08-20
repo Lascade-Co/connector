@@ -106,17 +106,61 @@ def _resolve_default_limit(dataset: dict[str, Any]) -> int:
     return max(DEFAULT_LIMIT_MIN, min(value, DEFAULT_LIMIT_MAX))
 
 
+def _parse_schema_version(value: Any) -> tuple[int, int] | None:
+    """Split a MAJOR.MINOR version, or None if it is not in that shape."""
+    if not isinstance(value, str):
+        return None
+    parts = value.split(".")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        return None
+    return int(parts[0]), int(parts[1])
+
+
 def _resolve_schema_version(dataset: dict[str, Any], dataset_name: str) -> str | None:
+    """Gate a gated dataset's schema_version on its MAJOR, not on an exact match.
+
+    An unreviewed MINOR of a reviewed MAJOR is additive by the backend's
+    convention, so it is accepted with a warning rather than taking the whole run
+    down. An unreviewed MAJOR may change or drop existing columns, so it still
+    raises. See SUPPORTED_SCHEMA_VERSIONS for the full rationale.
+    """
     value = dataset.get("schema_version")
     supported = SUPPORTED_SCHEMA_VERSIONS.get(dataset_name)
     if supported is None:
         return value
-    if value not in supported:
-        expected = ", ".join(sorted(supported))
+    if value in supported:
+        return value
+
+    reviewed = ", ".join(sorted(supported))
+    parsed = _parse_schema_version(value)
+    reviewed_majors = {
+        parsed_supported[0]
+        for parsed_supported in map(_parse_schema_version, supported)
+        if parsed_supported is not None
+    }
+    if parsed is None or parsed[0] not in reviewed_majors:
         raise ValueError(
             f"Dataset '{dataset_name}' has unsupported schema_version '{value}'; "
-            f"expected one of: {expected}."
+            f"expected one of: {reviewed}. A new MAJOR version can change or drop "
+            f"existing columns, so review the backend's export and then add the "
+            f"version to SUPPORTED_SCHEMA_VERSIONS in pipelines/esim/constants.py."
         )
+
+    logger.warning(
+        "SCHEMA DRIFT: dataset '%s' reports schema_version '%s', which is not in the "
+        "reviewed set (%s). Accepting it because MAJOR %s is reviewed and the backend "
+        "bumps MINOR only for additive columns; dlt is inferring any new column. "
+        "ACTION: review the backend's export for this version — if it added a money "
+        "field, pin an explicit decimal hint in DATASET_COLUMN_HINTS (the backend sends "
+        "Decimals as JSON floats, which infer as double) — then add '%s' to "
+        "SUPPORTED_SCHEMA_VERSIONS in pipelines/esim/constants.py to record the review "
+        "and silence this warning.",
+        dataset_name,
+        value,
+        reviewed,
+        parsed[0],
+        value,
+    )
     return value
 
 
