@@ -9,6 +9,11 @@ dlthub_telemetry = false
 # clickhouse-connect's shared HTTP pool defaults to 8 connections. Keep load
 # concurrency below that ceiling so loader jobs do not discard pooled sockets.
 workers = 4
+# A merge job blocked on a ClickHouse mutation is not helped by retrying: the
+# abandoned query keeps running server-side and each attempt queues another
+# mutation behind it, so the default of 5 turns one stall into a 25-minute pileup.
+# Allow a single retry for genuine transients, then fail fast and visibly.
+raise_on_max_retries = 2
 
 [sources.facebook_ads]
 account_id = "344051707969015" # please set me up!

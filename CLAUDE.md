@@ -77,6 +77,8 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 - **Replace disposition** for full-refresh tables
 - dlt handles ClickHouse schema creation and evolution automatically
 - Dataset/table naming uses configurable separators
+- dlt merges emit `DELETE FROM`, which ClickHouse runs as a synchronous mutation. It must stay synchronous: the delete's `IN (SELECT ... FROM <temp>)` subquery is evaluated when the mutation runs, and dlt drops that temp table as soon as the statement returns
+- ClickHouse 25.12 crashes vertical merges on tables carrying lightweight deletes (`Code: 295 ... ColumnGathererTransform (RECEIVED_EMPTY_DATA)`). The failed merge retries forever, and because the scheduler picks merges before mutations, every pending delete starves — the pipeline then hangs in `waitForMutation` until the socket dies. Any dlt merge table over 131k rows with 11+ non-PK columns is exposed; fix with `ALTER TABLE <t> MODIFY SETTING enable_vertical_merge_algorithm = 0`. Diagnose via `system.part_log` where `error = 295`
 
 ### Rate Limiting & Scaling
 - Facebook A/B/C matrices mix independent `d1`/`m4`/`d2` families, spacing each family's suffix shards by roughly one hour; account delays default to zero
@@ -84,6 +86,7 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 - Creatives are incremental Monday-Saturday and fully reconciled Sunday or with manual workflow mode `full`
 - Partial current-state loads commit valid merges; later reconciliation repairs only the missing subset
 - Daily Insights expose trial and subscription counts and values as four scalar columns derived from Meta action arrays
+- The `insights__actions`, `insights__action_values`, and `insights__website_ctr` nested tables are read directly by the Metabase model `fb_insights_base_data` (id 587). Do not stop populating, truncate, or drop them. The flattened scalar columns are not a substitute: `_expand_action_list` keeps the first entry per `action_type` while the model sums them, and Meta returns repeat entries often enough that ~4% of rows disagree
 - Facebook historical backfills load Insights only and serialize multi-group matrices; current-state resources use the daily/manual Facebook workflows
 - Local Facebook, eSIM Facebook, and subscription Facebook execution is restricted to exact group `d1c`; all other groups are GitHub Actions-only
 - Max parallel: 1 per batch in GitHub Actions
