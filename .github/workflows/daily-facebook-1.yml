@@ -24,7 +24,7 @@ jobs:
   facebook_etl:
     strategy:
       matrix:
-        group: [d1a, m4a, d2a]
+        group: [d1a, m4a, d2a, m8a]
       fail-fast: false
       max-parallel: 1
     uses: ./.github/workflows/_reusable-etl.yml
