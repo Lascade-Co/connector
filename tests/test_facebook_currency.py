@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal
 from unittest import mock
 
+import dlt
+
 from facebook_ads.helpers import flatten_facebook_insights
 from facebook_ads.insights import merge_report_rows, split_insight_fields
 from facebook_ads.settings import DEFAULT_INSIGHT_FIELDS
@@ -14,6 +16,7 @@ from pipelines.facebook.currency import (
     convert_budget_row,
     convert_insights_row,
     fx_rate_rows,
+    insights_currency_map,
 )
 from pipelines.facebook.ecb import EcbRateError, parse_observations
 from pipelines.facebook.raw_sources import INSIGHT_FIELDS
@@ -292,6 +295,75 @@ class CurrencyFieldRequestTests(unittest.TestCase):
 
         self.assertNotIn("account_currency", core)
         self.assertNotIn("account_currency", unique)
+
+
+class DltMapCompatibilityTests(unittest.TestCase):
+    """The map has to survive dlt's signature inspection, not just a direct call.
+
+    dlt reads the mapped function's signature and passes its ``meta`` argument
+    as the second positional one. A ``functools.partial`` that binds ``provider``
+    still advertises it, so dlt collides with it at extract time - which no
+    direct-call test can reveal.
+    """
+
+    def provider(self) -> AedRateProvider:
+        return AedRateProvider(
+            fetch=lambda start, end: parse_observations(TWO_DAYS),
+            today=date(2026, 8, 31),
+        )
+
+    def gbp_row(self):
+        return {
+            "account_id": "555",
+            "date_start": "2026-08-28",
+            "account_currency": "GBP",
+            "spend": "100.00",
+            "action_values": [{"action_type": "omni_purchase", "value": "50.00"}],
+        }
+
+    def test_the_map_runs_through_a_real_dlt_pipe(self):
+        rows = [self.gbp_row()]
+
+        @dlt.resource(name="probe")
+        def probe():
+            yield rows
+
+        probe.add_map(insights_currency_map(self.provider()), insert_at=1)
+        extracted = list(probe)
+
+        self.assertEqual(len(extracted), 1)
+        self.assertEqual(extracted[0]["source_currency"], "GBP")
+        self.assertEqual(extracted[0]["spend_source"], "100.00")
+        self.assertNotEqual(extracted[0]["spend"], "100.00")
+
+    def test_the_map_is_ordered_before_flattening_in_a_real_pipe(self):
+        """Flattened Float64 scalars must be derived from converted values."""
+
+        rate = Decimal("4.9882078278")
+        rows = [self.gbp_row()]
+
+        @dlt.resource(name="probe_flatten")
+        def probe():
+            yield rows
+
+        probe.add_map(insights_currency_map(self.provider()), insert_at=1)
+        probe.add_map(flatten_facebook_insights, insert_at=2)
+        extracted = list(probe)
+
+        self.assertAlmostEqual(
+            extracted[0]["action_values_omni_purchase"],
+            float((Decimal("50.00") * rate).quantize(Decimal("0.000001"))),
+            6,
+        )
+
+    def test_the_budget_transform_takes_exactly_one_argument(self):
+        provider = self.provider()
+        provider.note_account_currency("555", "GBP")
+        transform = budget_currency_map(provider, "unused-token")
+
+        row = transform({"account_id": "555", "daily_budget": "5000"})
+
+        self.assertEqual(row["daily_budget"], "24941")
 
 
 class InsightsConversionTests(unittest.TestCase):

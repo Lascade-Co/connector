@@ -345,9 +345,19 @@ def convert_insights_row(item: DictStrAny, provider: AedRateProvider) -> DictStr
 def insights_currency_map(
     provider: AedRateProvider,
 ) -> Callable[[DictStrAny], DictStrAny]:
-    """A pre-flatten map for ``facebook_insights_source``."""
+    """A pre-flatten map for ``facebook_insights_source``.
 
-    return functools.partial(convert_insights_row, provider=provider)
+    Must be a closure, not a ``functools.partial``. dlt inspects the mapped
+    function's signature and treats a second positional parameter as its
+    ``meta`` argument, so a partial over ``convert_insights_row(item, provider)``
+    is called as ``f(item, meta)`` and collides with the bound ``provider``.
+    A one-argument closure leaves dlt nothing to misread.
+    """
+
+    def convert(item: DictStrAny) -> DictStrAny:
+        return convert_insights_row(item, provider)
+
+    return convert
 
 
 # ---------------------------------------------------------------------------
@@ -382,9 +392,16 @@ def convert_budget_row(
 def budget_currency_map(
     provider: AedRateProvider, access_token: str
 ) -> Callable[[DictStrAny], DictStrAny]:
-    return functools.partial(
-        convert_budget_row, provider=provider, access_token=access_token
-    )
+    """A row transform for the budget-bearing current-state resources.
+
+    A closure for the same reason as ``insights_currency_map``, so neither
+    factory can be moved onto a dlt map and break.
+    """
+
+    def convert(row: DictStrAny) -> DictStrAny:
+        return convert_budget_row(row, provider, access_token)
+
+    return convert
 
 
 # ---------------------------------------------------------------------------
