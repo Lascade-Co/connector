@@ -1,6 +1,6 @@
 """Loads campaigns, ads sets, ads, leads and insight data from Facebook Marketing API"""
 
-from typing import Iterator, Sequence
+from typing import Any, Iterator, Sequence
 
 import dlt
 import logging
@@ -177,6 +177,7 @@ def facebook_insights_source(
     app_api_version: str = None,
     report_start_date: str = None,
     report_end_date: str = None,
+    pre_flatten: Any = None,
 ) -> DltResource:
     """Incrementally loads insight reports with defined granularity level, fields, breakdowns etc.
 
@@ -204,6 +205,7 @@ def facebook_insights_source(
         app_api_version(str, optional): A version of the facebook api required by the app for which the access tokens were issued ie. 'v17.0'. Defaults to the facebook_business library default version
         report_start_date (str, optional): Inclusive lower bound for one independently loaded report window.
         report_end_date (str, optional): Inclusive upper bound for one independently loaded report window.
+        pre_flatten (Callable[[DictStrAny], DictStrAny], optional): Applied to each raw report row *before* flattening, so scalars derived from nested arrays inherit the transform. Used for currency normalization.
 
     Returns:
         DltResource: facebook_insights
@@ -338,6 +340,12 @@ def facebook_insights_source(
             dlt.current.resource_state()[
                 INSIGHTS_WINDOW_CHECKPOINT
             ] = window_end.to_date_string()
+
+    # Any pre-flatten transform must run first so that the scalar columns
+    # flattening derives from the nested arrays inherit it.
+    if pre_flatten is not None:
+        facebook_insights.add_map(pre_flatten, insert_at=1)
+        return facebook_insights.add_map(flatten_facebook_insights, insert_at=2)
 
     # Attach a lightweight map to flatten complex array/object fields to scalar columns
     return facebook_insights.add_map(flatten_facebook_insights, insert_at=1)

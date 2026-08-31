@@ -1,3 +1,4 @@
+import functools
 import unittest
 import tomllib
 from pathlib import Path
@@ -21,6 +22,24 @@ GITHUB_RUNNER_ENV = {
 
 
 class FacebookRunnerOrderTests(unittest.TestCase):
+    def assert_ran_insights(self, run_windows, insights, group_name, backfill_env):
+        """The travel runner binds its currency map onto the insights resource."""
+
+        self.assertEqual(run_windows.call_count, 1)
+        pipeline_arg, insights_arg, creds_arg, group_arg = run_windows.call_args.args
+        delegate = (
+            insights_arg.func
+            if isinstance(insights_arg, functools.partial)
+            else insights_arg
+        )
+        self.assertIs(delegate, insights)
+        self.assertEqual(creds_arg, [{"account_id": "act-1", "token": "secret"}])
+        self.assertEqual(group_arg, group_name)
+        self.assertEqual(
+            run_windows.call_args.kwargs, {"backfill_env_name": backfill_env}
+        )
+        return pipeline_arg
+
     def test_all_facebook_runners_commit_insights_before_structural_resources(self):
         modules = (
             (facebook_ads_pipeline, "facebook"),
@@ -59,17 +78,17 @@ class FacebookRunnerOrderTests(unittest.TestCase):
 
                 get_for_group.assert_called_once_with("any-group", platform)
                 pipeline_factory.return_value.sync_destination.assert_called_once_with()
-                run_windows.assert_called_once_with(
-                    pipeline_factory.return_value,
+                pipeline_arg = self.assert_ran_insights(
+                    run_windows,
                     insights,
-                    [{"account_id": "act-1", "token": "secret"}],
                     "any-group",
-                    backfill_env_name={
+                    {
                         "facebook": "FB_BACKFILL_DAYS",
                         "esim_facebook": "ESIM_FB_BACKFILL_DAYS",
                         "subscription_facebook": "SUB_FB_BACKFILL_DAYS",
                     }[platform],
                 )
+                self.assertEqual(pipeline_arg, pipeline_factory.return_value)
                 run_structural.assert_called_once_with(
                     pipeline_factory.return_value,
                     [structural],
@@ -115,13 +134,10 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                 ):
                     module.run()
 
-                run_windows.assert_called_once_with(
-                    pipeline_factory.return_value,
-                    insights,
-                    [{"account_id": "act-1", "token": "secret"}],
-                    "any-group",
-                    backfill_env_name=backfill_env,
+                pipeline_arg = self.assert_ran_insights(
+                    run_windows, insights, "any-group", backfill_env
                 )
+                self.assertEqual(pipeline_arg, pipeline_factory.return_value)
                 run_structural.assert_not_called()
 
 

@@ -20,6 +20,10 @@ INSIGHTS_WINDOW_CHECKPOINT = "last_completed_window_end"
 INSIGHT_IDENTITY_FIELDS = (
     "account_id",
     "account_name",
+    # Not a metric but a property of the row's account. It must appear in every
+    # report so a row returned by only one of the split jobs still states its
+    # reporting currency; see pipelines/facebook/currency.py.
+    "account_currency",
     "campaign_id",
     "campaign_name",
     "adset_id",

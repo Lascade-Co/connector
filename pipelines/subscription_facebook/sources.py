@@ -1,9 +1,5 @@
 import dlt
-from pipelines.facebook.creative_status import (
-    get_partial_creative_accounts,
-    mark_partial_creative_account,
-    reset_partial_creative_accounts,
-)
+from pipelines.facebook.creative_status import mark_partial_creative_account
 from pipelines.facebook.rate_limit import stream_with_rate_limit_guard
 from pipelines.facebook.structural import load_structural_resource
 from pipelines.subscription_facebook.raw_sources import ads_src, insights_src

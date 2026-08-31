@@ -6,6 +6,10 @@ from dlt.extract.exceptions import ResourceExtractionError
 from facebook_business.exceptions import FacebookRequestError
 
 from pipelines.esim_facebook import esim_facebook_pipeline, sources
+from pipelines.facebook.creative_status import (
+    get_partial_creative_accounts,
+    reset_partial_creative_accounts,
+)
 
 
 def _rate_limit_error(minutes: int, code: int = 17) -> FacebookRequestError:
@@ -37,7 +41,7 @@ def _run_creatives(accounts):
 
 class EsimFacebookCreativeParkingTests(unittest.TestCase):
     def setUp(self):
-        sources.reset_partial_creative_accounts()
+        reset_partial_creative_accounts()
 
     def test_direct_rate_limit_parks_without_sleep_or_retry(self):
         calls = 0
@@ -53,7 +57,7 @@ class EsimFacebookCreativeParkingTests(unittest.TestCase):
 
         self.assertEqual(rows, [])
         self.assertEqual(calls, 1)
-        self.assertEqual(sources.get_partial_creative_accounts(), ("act-limited",))
+        self.assertEqual(get_partial_creative_accounts(), ("act-limited",))
 
     def test_wrapped_rate_limit_parks_and_continues_to_next_account(self):
         attempts = {"act-limited": 0, "act-next": 0}
@@ -76,7 +80,7 @@ class EsimFacebookCreativeParkingTests(unittest.TestCase):
 
         self.assertEqual([row["id"] for row in rows], ["creative-next"])
         self.assertEqual(attempts, {"act-limited": 1, "act-next": 1})
-        self.assertEqual(sources.get_partial_creative_accounts(), ("act-limited",))
+        self.assertEqual(get_partial_creative_accounts(), ("act-limited",))
 
     def test_partial_rows_are_not_replayed_before_account_is_parked(self):
         calls = 0
@@ -92,7 +96,7 @@ class EsimFacebookCreativeParkingTests(unittest.TestCase):
 
         self.assertEqual([row["id"] for row in rows], ["creative-1"])
         self.assertEqual(calls, 1)
-        self.assertEqual(sources.get_partial_creative_accounts(), ("act-limited",))
+        self.assertEqual(get_partial_creative_accounts(), ("act-limited",))
 
     def test_non_rate_limit_failure_is_raised(self):
         error = _rate_limit_error(minutes=1, code=100)
