@@ -33,7 +33,7 @@ def inline_ad(row, origin_date, destination_date, origin, destination, cabin_cla
             "origin": str(origin),
             "destination": str(destination),
             "os": get(row, "data", "kwargs", "os"),
-            "country": get(row, "data", "kwargs", "country"),
+            "country": _normalize_case(get(row, "data", "kwargs", "country"), "upper"),
             "created_at": row["created_at"],
             "version": 2.0,
         }
@@ -110,7 +110,7 @@ def ad_request_stats(row: dict):
 
 def legacy_inline_ad(row: dict):
     os = get(row, "data", "OS")
-    country = get(row, "data", "countryCode")
+    country = _normalize_case(get(row, "data", "countryCode"), "upper")
     new_api = get(row, "data", "newApi") == True
 
     params = get(row, "data", "params")
