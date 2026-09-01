@@ -111,6 +111,7 @@ def ad_request_stats(row: dict):
 def legacy_inline_ad(row: dict):
     os = get(row, "data", "OS")
     country = get(row, "data", "countryCode")
+    new_api = get(row, "data", "newApi") == True
 
     params = get(row, "data", "params")
     leg = get(params, "legs", 0)
@@ -146,7 +147,7 @@ def legacy_inline_ad(row: dict):
             "origin": origin,
             "destination": destination,
             "created_at": row["created_at"],
-            "version": 1.0,
+            "version": 2.0 if new_api else 1.0,
             "cabin_class": cabin_class,
             "travelers": travelers,
         }
