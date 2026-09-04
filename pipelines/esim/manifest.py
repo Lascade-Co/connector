@@ -9,6 +9,7 @@ from pipelines.esim.constants import (
     DEFAULT_LIMIT_MAX,
     DEFAULT_LIMIT_MIN,
     DATASET_COLUMN_HINTS,
+    DATASET_COLUMN_HINT_MIN_VERSIONS,
     MANIFEST_ENDPOINT,
     MAX_RETRIES,
     REQUEST_TIMEOUT,
@@ -164,6 +165,31 @@ def _resolve_schema_version(dataset: dict[str, Any], dataset_name: str) -> str |
     return value
 
 
+def _column_hints_for_version(
+    dataset_name: str,
+    schema_version: str | None,
+) -> dict[str, Any] | None:
+    hints = DATASET_COLUMN_HINTS.get(dataset_name)
+    if not hints:
+        return None
+
+    actual_version = _parse_schema_version(schema_version)
+    minimum_versions = DATASET_COLUMN_HINT_MIN_VERSIONS.get(dataset_name, {})
+    if actual_version is None or not minimum_versions:
+        return hints
+
+    selected = {
+        column: hint
+        for column, hint in hints.items()
+        if (
+            (minimum := _parse_schema_version(minimum_versions.get(column)))
+            is None
+            or actual_version >= minimum
+        )
+    }
+    return selected or None
+
+
 def _normalize_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
     original_name = _require_non_empty_string(dataset, "name", "<unknown>")
     strategy = _require_non_empty_string(dataset, "strategy", original_name)
@@ -185,7 +211,7 @@ def _normalize_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
         "write_disposition": STRATEGY_TO_DISPOSITION[strategy],
         "default_limit": _resolve_default_limit(dataset),
         "schema_version": schema_version,
-        "columns": DATASET_COLUMN_HINTS.get(normalized_name),
+        "columns": _column_hints_for_version(normalized_name, schema_version),
     }
     logger.info("Resolved manifest dataset config: %s", resolved)
     return resolved
