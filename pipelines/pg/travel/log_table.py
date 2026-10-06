@@ -4,6 +4,7 @@ import time
 import dlt
 
 from pipelines.pg.travel.constants import LOG_TABLE
+from pipelines.pg.travel.fx import USD_COLUMNS, CurrencyApiClient, UsdRateProvider, add_usd
 from pipelines.pg.db_utils import fetch_batched, get_last_logs_record_info, get_last_record_info
 from pipelines.pg.travel.parsers import ad_request_stats as parse_request, legacy_inline_ad, car_ads, flight_ads, hotel_ads
 from utils import setup_logging
@@ -18,8 +19,13 @@ AD_REQUEST_STATS_DESTINATION = "ad_request_stats"
     write_disposition="merge",
     merge_key="id",
     primary_key="id",
+    columns=USD_COLUMNS,
 )
 def inline_ads():
+    fx = UsdRateProvider(
+        lambda: CurrencyApiClient(dlt.secrets.get("sources.currencyapi.api_key")),
+        dlt.current.resource_state().setdefault("fx_usd", {}),
+    )
     column, last_record = get_last_logs_record_info(DESTINATION, "clickhouse")
 
     ad_types = ('InlineAdsViewSet.car', 'InlineAdsViewSet.flight', 'InlineAdsViewSet.hotel', 'ad_fetch')
@@ -45,7 +51,8 @@ def inline_ads():
             logging.warning("Unknown ad type: %s", row["name"])
             continue
 
-        yield from parser(row)  # parser returns one or many dicts
+        for item in parser(row):  # parser returns one or many dicts
+            yield add_usd(item, fx)
 
 
 @dlt.resource(
