@@ -4,8 +4,8 @@ import time
 import dlt
 
 from pipelines.pg.travel.constants import LOG_TABLE
-from pipelines.pg.travel.fx import USD_COLUMNS, CurrencyApiClient, UsdRateProvider, add_usd
-from pipelines.pg.db_utils import fetch_batched, get_last_logs_record_info, get_last_record_info
+from pipelines.pg.travel.fx import USD_COLUMNS, ClickHouseRateStore, CurrencyApiClient, UsdRateProvider, add_usd
+from pipelines.pg.db_utils import fetch_batched, get_ch_connection, get_last_logs_record_info, get_last_record_info
 from pipelines.pg.travel.parsers import ad_request_stats as parse_request, legacy_inline_ad, car_ads, flight_ads, hotel_ads
 from utils import setup_logging
 
@@ -24,7 +24,7 @@ AD_REQUEST_STATS_DESTINATION = "ad_request_stats"
 def inline_ads():
     fx = UsdRateProvider(
         lambda: CurrencyApiClient(dlt.secrets.get("sources.currencyapi.api_key")),
-        dlt.current.resource_state().setdefault("fx_usd", {}),
+        lambda: ClickHouseRateStore(get_ch_connection("clickhouse")),
     )
     column, last_record = get_last_logs_record_info(DESTINATION, "clickhouse")
 

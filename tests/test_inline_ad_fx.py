@@ -36,8 +36,24 @@ class FakeClient:
         return dict(self.rates)
 
 
-def provider(client, state=None, now=NOW):
-    return UsdRateProvider(lambda: client, {} if state is None else state, now=now)
+class FakeStore:
+    """Stands in for the ClickHouse table; shared between "runs"."""
+
+    def __init__(self, snapshots=()):
+        self.snapshots = list(snapshots)
+        self.loaded_since = None
+
+    def load(self, since):
+        self.loaded_since = since
+        return [s for s in self.snapshots if s.rate_date >= since]
+
+    def save(self, snapshot):
+        self.snapshots.append(snapshot)
+
+
+def provider(client, store=None, now=NOW):
+    store = FakeStore() if store is None else store
+    return UsdRateProvider(lambda: client, lambda: store, now=now)
 
 
 def ad(price, currency, created_at=YESTERDAY):
@@ -45,11 +61,11 @@ def ad(price, currency, created_at=YESTERDAY):
 
 
 class AddUsdTests(unittest.TestCase):
-    def test_usd_is_identity_and_never_touches_the_client(self):
+    def test_usd_is_identity_and_touches_neither_client_nor_store(self):
         def boom():
-            raise AssertionError("client must not be created for USD")
+            raise AssertionError("must not be created for USD")
 
-        row = add_usd(ad(0.42, "usd"), UsdRateProvider(boom, {}, now=NOW))
+        row = add_usd(ad(0.42, "usd"), UsdRateProvider(boom, boom, now=NOW))
 
         self.assertEqual(row["cpc_price_usd"], 0.42)
         self.assertEqual(row["cpc_price"], 0.42)
@@ -66,37 +82,47 @@ class AddUsdTests(unittest.TestCase):
         self.assertEqual(inr["cpc_price_usd"], 0.5)
         self.assertEqual(client.calls, [("historical", date(2026, 10, 5))])
 
-    def test_cached_state_is_reused_by_the_next_run(self):
-        state = {}
-        provider(FakeClient(), state).units_per_usd("EUR", date(2026, 10, 5))
-        provider(FakeClient(), state).units_per_usd("EUR", NOW.date())
+    def test_rates_are_saved_the_moment_they_are_fetched(self):
+        store = FakeStore()
+        rates = provider(FakeClient(), store)
+
+        rates.units_per_usd("EUR", date(2026, 10, 5))
+
+        # Saved before the run yields a single row, so a load that fails later
+        # does not throw the fetched rates away.
+        self.assertEqual([(s.kind, s.rate_date) for s in store.snapshots], [("historical", date(2026, 10, 5))])
+
+    def test_saved_rates_are_reused_by_the_next_run(self):
+        store = FakeStore()
+        provider(FakeClient(), store).units_per_usd("EUR", date(2026, 10, 5))
+        provider(FakeClient(), store).units_per_usd("EUR", NOW.date())
 
         client = FakeClient()
-        rates = provider(client, state, now=NOW + timedelta(hours=1))
-        rates.units_per_usd("EUR", date(2026, 10, 5))
+        rates = provider(client, store, now=NOW + timedelta(hours=1))
+        self.assertEqual(rates.units_per_usd("EUR", date(2026, 10, 5)), Decimal("0.8"))
         rates.units_per_usd("EUR", NOW.date())
 
         self.assertEqual(client.calls, [])
 
     def test_latest_is_refetched_after_ttl_and_on_a_new_day(self):
-        state = {}
-        provider(FakeClient(), state).units_per_usd("EUR", NOW.date())
+        store = FakeStore()
+        provider(FakeClient(), store).units_per_usd("EUR", NOW.date())
 
         later = FakeClient()
-        provider(later, state, now=NOW + timedelta(hours=fx.LATEST_TTL_HOURS)).units_per_usd("EUR", NOW.date())
+        provider(later, store, now=NOW + timedelta(hours=fx.LATEST_TTL_HOURS)).units_per_usd("EUR", NOW.date())
         self.assertEqual(later.calls, [("latest", None)])
 
         tomorrow = NOW + timedelta(days=1, hours=-11)
         next_day = FakeClient()
-        provider(next_day, state, now=tomorrow).units_per_usd("EUR", tomorrow.date())
+        provider(next_day, store, now=tomorrow).units_per_usd("EUR", tomorrow.date())
         self.assertEqual(next_day.calls, [("latest", None)])
 
-    def test_old_historical_snapshots_are_pruned(self):
-        state = {"historical": {"2026-09-01": {"EUR": "0.9"}, "2026-10-05": {"EUR": "0.8"}}}
+    def test_only_recent_days_are_read_back(self):
+        store = FakeStore()
 
-        provider(FakeClient(), state)
+        provider(FakeClient(), store).units_per_usd("EUR", date(2026, 10, 5))
 
-        self.assertEqual(list(state["historical"]), ["2026-10-05"])
+        self.assertEqual(store.loaded_since, NOW.date() - timedelta(days=fx.CACHE_LOOKBACK_DAYS))
 
     def test_unknown_currency_loads_with_null_usd(self):
         row = add_usd(ad(3, "XYZ"), provider(FakeClient()))
@@ -119,19 +145,51 @@ class AddUsdTests(unittest.TestCase):
             add_usd(ad(1, "EUR"), rates)
 
     def test_unpublished_yesterday_falls_back_to_that_days_latest(self):
-        state = {}
-        provider(FakeClient(), state, now=YESTERDAY).units_per_usd("EUR", YESTERDAY.date())
+        store = FakeStore()
+        provider(FakeClient(), store, now=YESTERDAY).units_per_usd("EUR", YESTERDAY.date())
 
-        rates = provider(FakeClient(historical_error=SnapshotNotPublished("not yet")), state)
+        rates = provider(FakeClient(historical_error=SnapshotNotPublished("not yet")), store)
         row = add_usd(ad(2, "EUR"), rates)
 
         self.assertEqual(row["cpc_price_usd"], 2.5)
+        # The fallback is not saved as the close, so a later run still fetches it.
+        self.assertEqual([s.kind for s in store.snapshots], ["latest"])
 
     def test_unpublished_day_without_fallback_raises(self):
         rates = provider(FakeClient(historical_error=SnapshotNotPublished("not yet")))
 
         with self.assertRaises(SnapshotNotPublished):
             rates.units_per_usd("EUR", date(2026, 10, 5))
+
+
+class ClickHouseRateStoreTests(unittest.TestCase):
+    def test_creates_table_and_saves_one_row_per_currency(self):
+        client = mock.Mock()
+        store = fx.ClickHouseRateStore(client)
+
+        store.save(fx.Snapshot("historical", date(2026, 10, 5), NOW, {"EUR": Decimal("0.8"), "XBT": Decimal("0.0000000000000000001234")}))
+
+        self.assertIn("CREATE TABLE IF NOT EXISTS inline_ad_fx_usd_rates", client.command.call_args[0][0])
+        table, rows = client.insert.call_args[0]
+        self.assertEqual(table, "inline_ad_fx_usd_rates")
+        self.assertEqual(rows[0], ["historical", date(2026, 10, 5), "EUR", Decimal("0.8").quantize(fx.RATE_SCALE), NOW])
+        self.assertEqual(rows[1][3], Decimal("0"))  # rounded to fit Decimal(38, 18)
+
+    def test_load_groups_rows_into_snapshots(self):
+        naive = datetime(2026, 10, 6, 6, 0)
+        client = mock.Mock()
+        client.query.return_value.result_rows = [
+            ("latest", date(2026, 10, 6), "EUR", Decimal("0.8"), naive),
+            ("latest", date(2026, 10, 6), "INR", Decimal("80"), naive + timedelta(hours=3)),
+            ("historical", date(2026, 10, 5), "EUR", Decimal("0.81"), naive),
+        ]
+
+        snapshots = {s.kind: s for s in fx.ClickHouseRateStore(client).load(date(2026, 9, 22))}
+
+        self.assertEqual(snapshots["latest"].rates, {"EUR": Decimal("0.8"), "INR": Decimal("80")})
+        self.assertEqual(snapshots["latest"].fetched_at, datetime(2026, 10, 6, 9, 0, tzinfo=timezone.utc))
+        self.assertEqual(snapshots["historical"].rates, {"EUR": Decimal("0.81")})
+        self.assertEqual(client.query.call_args.kwargs["parameters"], {"since": date(2026, 9, 22)})
 
 
 class ParseRatesTests(unittest.TestCase):
