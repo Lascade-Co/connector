@@ -38,6 +38,8 @@ def inline_ads():
         sql += f' AND "{column}" > %s ORDER BY "{column}"'
         params = (*ad_types, last_record)
 
+    sql += ' LIMIT 4000000'
+
     for row in fetch_batched("pg_replication", sql, params):
         if row["name"].endswith("car"):
             parser = car_ads
