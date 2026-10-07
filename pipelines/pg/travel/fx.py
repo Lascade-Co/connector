@@ -36,8 +36,6 @@ API_URL = "https://api.currencyapi.com/v3"
 BASE_CURRENCY = "USD"
 
 LATEST_TTL_HOURS = 6
-# Only recent days are read back; older rows stay in the table as an audit trail.
-CACHE_LOOKBACK_DAYS = 14
 
 HISTORICAL = "historical"
 LATEST = "latest"
@@ -146,7 +144,7 @@ class Snapshot:
 
 
 class RateStore(Protocol):
-    def load(self, since: date) -> list[Snapshot]: ...
+    def load(self, kind: str, rate_date: date) -> Snapshot | None: ...
 
     def save(self, snapshot: Snapshot) -> None: ...
 
@@ -175,23 +173,21 @@ class ClickHouseRateStore:
             """
         )
 
-    def load(self, since: date) -> list[Snapshot]:
+    def load(self, kind: str, rate_date: date) -> Snapshot | None:
+        """One stored snapshot, looked up by exact day so any age is found."""
+
         result = self._client.query(
-            f"SELECT kind, rate_date, currency, units_per_usd, fetched_at "
-            f"FROM {self._table} FINAL WHERE rate_date >= {{since:Date}}",
-            parameters={"since": since},
+            f"SELECT currency, units_per_usd, fetched_at FROM {self._table} FINAL "
+            f"WHERE kind = {{kind:String}} AND rate_date = {{rate_date:Date}}",
+            parameters={"kind": kind, "rate_date": rate_date},
         )
-        grouped: dict[tuple[str, date], Snapshot] = {}
-        for kind, rate_date, currency, value, fetched_at in result.result_rows:
-            if fetched_at.tzinfo is None:
-                fetched_at = fetched_at.replace(tzinfo=timezone.utc)
-            snapshot = grouped.get((kind, rate_date))
-            if snapshot is None or fetched_at > snapshot.fetched_at:
-                rates = snapshot.rates if snapshot else {}
-                snapshot = Snapshot(kind, rate_date, fetched_at, rates)
-                grouped[(kind, rate_date)] = snapshot
-            snapshot.rates[currency] = Decimal(value)
-        return list(grouped.values())
+        if not result.result_rows:
+            return None
+        rates = {currency: Decimal(value) for currency, value, _ in result.result_rows}
+        fetched_at = max(row[2] for row in result.result_rows)
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+        return Snapshot(kind, rate_date, fetched_at, rates)
 
     def save(self, snapshot: Snapshot) -> None:
         self._client.insert(
@@ -221,8 +217,8 @@ class UsdRateProvider:
         self._now = now or datetime.now(timezone.utc)
         self._today = self._now.date()
         self._warned: set[str] = set()
-        self._historical: dict[date, dict[str, Decimal]] = {}
-        self._latest: dict[date, Snapshot] = {}
+        # Per-run memo of store lookups; None records a confirmed miss.
+        self._snapshots: dict[tuple[str, date], Snapshot | None] = {}
 
     # Both are created lazily so a USD-only run needs no key, no network and
     # no rate table.
@@ -232,16 +228,17 @@ class UsdRateProvider:
             self._client = self._client_factory()
         return self._client
 
-    def _ensure_loaded(self) -> RateStore:
+    @property
+    def store(self) -> RateStore:
         if self._store is None:
             self._store = self._store_factory()
-            since = self._today - timedelta(days=CACHE_LOOKBACK_DAYS)
-            for snapshot in self._store.load(since):
-                if snapshot.kind == HISTORICAL:
-                    self._historical[snapshot.rate_date] = snapshot.rates
-                else:
-                    self._latest[snapshot.rate_date] = snapshot
         return self._store
+
+    def _stored(self, kind: str, rate_date: date) -> Snapshot | None:
+        key = (kind, rate_date)
+        if key not in self._snapshots:
+            self._snapshots[key] = self.store.load(kind, rate_date)
+        return self._snapshots[key]
 
     def units_per_usd(self, currency: str, on: date) -> Decimal | None:
         code = currency.strip().upper()
@@ -258,13 +255,14 @@ class UsdRateProvider:
 
     def _fetched(self, kind: str, rate_date: date, rates: dict[str, Decimal]) -> Snapshot:
         snapshot = Snapshot(kind, rate_date, self._now, rates)
-        self._ensure_loaded().save(snapshot)
+        self.store.save(snapshot)
+        self._snapshots[(kind, rate_date)] = snapshot
         return snapshot
 
     def _historical_rates(self, on: date) -> dict[str, Decimal]:
-        self._ensure_loaded()
-        if on in self._historical:
-            return self._historical[on]
+        stored = self._stored(HISTORICAL, on)
+        if stored is not None:
+            return stored.rates
 
         try:
             rates = self.client.historical(on)
@@ -272,7 +270,7 @@ class UsdRateProvider:
             # Just after midnight yesterday's close may not be out yet; the
             # intraday snapshot taken that day is the best available rate.
             # It is not saved as historical, so a later run fetches the close.
-            latest = self._latest.get(on)
+            latest = self._stored(LATEST, on)
             if latest is not None:
                 logging.warning(
                     "Historical rates for %s not published yet; using that day's latest snapshot", on
@@ -280,18 +278,13 @@ class UsdRateProvider:
                 return latest.rates
             raise
 
-        self._historical[on] = self._fetched(HISTORICAL, on, rates).rates
-        return rates
+        return self._fetched(HISTORICAL, on, rates).rates
 
     def _latest_rates(self) -> dict[str, Decimal]:
-        self._ensure_loaded()
-        latest = self._latest.get(self._today)
+        latest = self._stored(LATEST, self._today)
         if latest is not None and self._now - latest.fetched_at < timedelta(hours=LATEST_TTL_HOURS):
             return latest.rates
-
-        snapshot = self._fetched(LATEST, self._today, self.client.latest())
-        self._latest[self._today] = snapshot
-        return snapshot.rates
+        return self._fetched(LATEST, self._today, self.client.latest()).rates
 
 
 def _row_date(value: Any) -> date | None:

@@ -41,11 +41,12 @@ class FakeStore:
 
     def __init__(self, snapshots=()):
         self.snapshots = list(snapshots)
-        self.loaded_since = None
+        self.loads = []
 
-    def load(self, since):
-        self.loaded_since = since
-        return [s for s in self.snapshots if s.rate_date >= since]
+    def load(self, kind, rate_date):
+        self.loads.append((kind, rate_date))
+        matches = [s for s in self.snapshots if (s.kind, s.rate_date) == (kind, rate_date)]
+        return max(matches, key=lambda s: s.fetched_at) if matches else None
 
     def save(self, snapshot):
         self.snapshots.append(snapshot)
@@ -117,12 +118,27 @@ class AddUsdTests(unittest.TestCase):
         provider(next_day, store, now=tomorrow).units_per_usd("EUR", tomorrow.date())
         self.assertEqual(next_day.calls, [("latest", None)])
 
-    def test_only_recent_days_are_read_back(self):
+    def test_rates_of_any_age_are_reused(self):
+        # Regression: a 14-day read-back window made a backlog starting a
+        # month ago refetch every already-cached day on every run.
+        old = date(2026, 9, 3)
+        store = FakeStore([fx.Snapshot("historical", old, NOW - timedelta(days=30), {"EUR": Decimal("0.8")})])
+        client = FakeClient()
+
+        row = add_usd(ad(2, "EUR", created_at=datetime(2026, 9, 3, 14, 0, tzinfo=timezone.utc)), provider(client, store))
+
+        self.assertEqual(row["cpc_price_usd"], 2.5)
+        self.assertEqual(client.calls, [])
+
+    def test_each_day_is_looked_up_once_per_run(self):
         store = FakeStore()
+        rates = provider(FakeClient(), store)
 
-        provider(FakeClient(), store).units_per_usd("EUR", date(2026, 10, 5))
+        for _ in range(3):
+            rates.units_per_usd("EUR", date(2026, 10, 5))
+            rates.units_per_usd("INR", date(2026, 10, 5))
 
-        self.assertEqual(store.loaded_since, NOW.date() - timedelta(days=fx.CACHE_LOOKBACK_DAYS))
+        self.assertEqual(store.loads, [("historical", date(2026, 10, 5))])
 
     def test_unknown_currency_loads_with_null_usd(self):
         row = add_usd(ad(3, "XYZ"), provider(FakeClient()))
@@ -175,21 +191,27 @@ class ClickHouseRateStoreTests(unittest.TestCase):
         self.assertEqual(rows[0], ["historical", date(2026, 10, 5), "EUR", Decimal("0.8").quantize(fx.RATE_SCALE), NOW])
         self.assertEqual(rows[1][3], Decimal("0"))  # rounded to fit Decimal(38, 18)
 
-    def test_load_groups_rows_into_snapshots(self):
+    def test_load_reads_one_exact_day(self):
         naive = datetime(2026, 10, 6, 6, 0)
         client = mock.Mock()
         client.query.return_value.result_rows = [
-            ("latest", date(2026, 10, 6), "EUR", Decimal("0.8"), naive),
-            ("latest", date(2026, 10, 6), "INR", Decimal("80"), naive + timedelta(hours=3)),
-            ("historical", date(2026, 10, 5), "EUR", Decimal("0.81"), naive),
+            ("EUR", Decimal("0.8"), naive),
+            ("INR", Decimal("80"), naive + timedelta(hours=3)),
         ]
 
-        snapshots = {s.kind: s for s in fx.ClickHouseRateStore(client).load(date(2026, 9, 22))}
+        snapshot = fx.ClickHouseRateStore(client).load("latest", date(2026, 10, 6))
 
-        self.assertEqual(snapshots["latest"].rates, {"EUR": Decimal("0.8"), "INR": Decimal("80")})
-        self.assertEqual(snapshots["latest"].fetched_at, datetime(2026, 10, 6, 9, 0, tzinfo=timezone.utc))
-        self.assertEqual(snapshots["historical"].rates, {"EUR": Decimal("0.81")})
-        self.assertEqual(client.query.call_args.kwargs["parameters"], {"since": date(2026, 9, 22)})
+        self.assertEqual(snapshot.rates, {"EUR": Decimal("0.8"), "INR": Decimal("80")})
+        self.assertEqual(snapshot.fetched_at, datetime(2026, 10, 6, 9, 0, tzinfo=timezone.utc))
+        self.assertEqual(
+            client.query.call_args.kwargs["parameters"], {"kind": "latest", "rate_date": date(2026, 10, 6)}
+        )
+
+    def test_load_returns_none_for_an_uncached_day(self):
+        client = mock.Mock()
+        client.query.return_value.result_rows = []
+
+        self.assertIsNone(fx.ClickHouseRateStore(client).load("historical", date(2026, 9, 3)))
 
 
 class ParseRatesTests(unittest.TestCase):
