@@ -3,6 +3,8 @@ name: Clickhouse sync every night
 on:
   schedule:
     - cron: "30 22 * * *"
+      timezone: "Asia/Kolkata"
+
   workflow_dispatch:
 
 concurrency:
