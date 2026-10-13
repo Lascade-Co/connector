@@ -1,8 +1,8 @@
-name: Clickhouse sync every night
+name: Clickhouse PG sync
 
 on:
   schedule:
-    - cron: "30 22 * * *"
+    - cron: "30 4,22 * * *"
       timezone: "Asia/Kolkata"
 
   workflow_dispatch:
