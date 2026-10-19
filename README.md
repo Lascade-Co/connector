@@ -92,6 +92,13 @@ data, change ads, or use destination credentials. A completed scan without the
 target error means it was not reproduced; it does not rule out listing-only
 failures or inaccessible/deleted objects.
 
+The same workflow's `inspect` mode isolates one known creative: direct versus
+batch reads, each default field, reduced field sets, ad-linked expansion, and
+available story/asset comparisons. Its creative/ad defaults point to the D2
+failure found on 2026-10-19. Reports retain field names, error codes, trace IDs,
+and equality results; successful creative content stays in memory. Inspect mode
+does not change ads or load data and must also run only in GitHub Actions.
+
 #### Google Ads
 ```bash
 python main.py google d1    # Run group d1
