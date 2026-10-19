@@ -77,29 +77,6 @@ metrics plus ads, campaigns, and ad sets; it does not fetch creative details.
 Existing creative rows remain stored but stop refreshing. eSIM and subscription
 Facebook pipelines retain their existing creative refresh behavior.
 
-To identify the ad behind Meta creative error `100 / 2446211`, run **Actions →
-Diagnose Facebook Creative Error (D2) → Run workflow**. Defaults match the
-reported failure: group `d2a`, account `912296209831774`. Choose an exact D2
-group; clear the account input to check all accounts in that group. The workflow
-runs mocked unit tests before restoring the existing base64 `FB_GROUPS` secret.
-It then reads creatives with the ETL field set, preserving each failed creative
-ID and mapping it to every accessible linked ad. It stops after the first batch
-containing the target error by default; enable `scan_all` for a broader scan.
-Results, ad names, and Ads Manager links appear in the run summary and the
-seven-day `facebook-creative-diagnostic-*` artifact. Other errors and incomplete
-scans are reported separately. A creative without an accessible linked ad still
-appears in the report. The diagnostic is GitHub Actions-only and does not load
-data, change ads, or use destination credentials. A completed scan without the
-target error means it was not reproduced; it does not rule out listing-only
-failures or inaccessible/deleted objects.
-
-The same workflow's `inspect` mode isolates one known creative: direct versus
-batch reads, each default field, reduced field sets, ad-linked expansion, and
-available story/asset comparisons. Its creative/ad defaults point to the D2
-failure found on 2026-10-19. Reports retain field names, error codes, trace IDs,
-and equality results; successful creative content stays in memory. Inspect mode
-does not change ads or load data and must also run only in GitHub Actions.
-
 #### Google Ads
 ```bash
 python main.py google d1    # Run group d1

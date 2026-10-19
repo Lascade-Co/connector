@@ -83,7 +83,7 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 ### Rate Limiting & Scaling
 - Facebook A/B/C matrices mix independent `d1`/`m4`/`d2` families, spacing each family's suffix shards by roughly one hour; account delays default to zero
 - Insights use separately committed async date windows, 100-row result pages, and split incompatible unique metrics; quota failures surface without stacked retries
-- The travel `facebook` pipeline skips unused creative enrichment; keep Insights, ads, campaigns, ad sets, and FX processing. Existing creative tables/state are retained. eSIM/subscription creative refreshes remain enabled; the manual diagnostic still reads creatives explicitly.
+- The travel `facebook` pipeline skips unused creative enrichment; keep Insights, ads, campaigns, ad sets, and FX processing. Existing creative tables/state are retained. eSIM/subscription creative refreshes remain enabled.
 - Partial current-state loads commit valid merges; later reconciliation repairs only the missing subset
 - Daily Insights expose trial and subscription counts and values as four scalar columns derived from Meta action arrays
 - The `insights__actions`, `insights__action_values`, and `insights__website_ctr` nested tables are read directly by the Metabase model `fb_insights_base_data` (id 587). Do not stop populating, truncate, or drop them. The flattened scalar columns are not a substitute: `_expand_action_list` keeps the first entry per `action_type` while the model sums them, and Meta returns repeat entries often enough that ~4% of rows disagree
@@ -111,7 +111,6 @@ Not every Facebook account bills in AED, but Metabase compares them as if they d
 
 ## GitHub Actions Workflows
 - `.github/workflows/_reusable-etl.yml` — Shared job template all pipelines use
-- `diagnose-facebook-creatives.yml` — Manual, read-only D2 creative error diagnosis; `scan` identifies creative/ad IDs and `inspect` isolates fields/direct-vs-batch reads. Uses only `FB_GROUPS`; reports exclude successful payloads. Defaults to `d2a`; no local execution or destination/state writes.
 - Daily schedules (UTC): Facebook batches A/B/C 0:00/1:00/2:00 (5:30/6:30/7:30 IST), Subscription Google 2:50 (8:20 IST), Google Ads 3:00 (8:30 IST), Subscription Facebook 3:00 (8:30 IST), GA4 4:30, Google Play 5:10, App Store 6:10, eSIM Facebook 8:30
 - Hourly: eSIM Analytics API every hour at :15
 - `backfill.yml` — Manual dispatch workflow for historical data loads
