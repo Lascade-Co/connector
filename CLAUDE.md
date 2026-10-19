@@ -83,7 +83,7 @@ Accounts are organized into named groups (d1, m4, d2, d1a, d1b, d1c, etc.). Each
 ### Rate Limiting & Scaling
 - Facebook A/B/C matrices mix independent `d1`/`m4`/`d2` families, spacing each family's suffix shards by roughly one hour; account delays default to zero
 - Insights use separately committed async date windows, 100-row result pages, and split incompatible unique metrics; quota failures surface without stacked retries
-- Creatives are incremental Monday-Saturday and fully reconciled Sunday or with manual workflow mode `full`
+- The travel `facebook` pipeline skips unused creative enrichment; keep Insights, ads, campaigns, ad sets, and FX processing. Existing creative tables/state are retained. eSIM/subscription creative refreshes remain enabled; the manual diagnostic still reads creatives explicitly.
 - Partial current-state loads commit valid merges; later reconciliation repairs only the missing subset
 - Daily Insights expose trial and subscription counts and values as four scalar columns derived from Meta action arrays
 - The `insights__actions`, `insights__action_values`, and `insights__website_ctr` nested tables are read directly by the Metabase model `fb_insights_base_data` (id 587). Do not stop populating, truncate, or drop them. The flattened scalar columns are not a substitute: `_expand_action_list` keeps the first entry per `action_type` while the model sums them, and Meta returns repeat entries often enough that ~4% of rows disagree

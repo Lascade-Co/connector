@@ -2,8 +2,6 @@ import dlt
 
 from pipelines.facebook.currency import FX_RATE_COLUMNS
 from pipelines.facebook.raw_sources import ads_src, insights_src
-from pipelines.facebook.creative_status import mark_partial_creative_account
-from pipelines.facebook.rate_limit import stream_with_rate_limit_guard
 from pipelines.facebook.structural import load_structural_resource
 
 # ---------------------------------------------------------------------------
@@ -43,26 +41,6 @@ def adsets_all(accounts, group_name: str, row_transform=None):
         source_attribute="ad_sets",
         resource_name="ad_sets",
         row_transform=row_transform,
-    )
-
-
-def _stream_creatives(cred, group_name: str):
-    """Iterate ad_creatives for one account, tagging account_id + managing_system."""
-    for r in ads_src(cred).ad_creatives:
-        r["account_id"] = cred["account_id"]
-        r["managing_system"] = group_name
-        yield r
-
-
-@dlt.resource(name="ad_creatives", primary_key="id", write_disposition="merge")
-def creatives_all(accounts, group_name: str):
-    """Park a quota-limited account and let the runner report a partial load."""
-    yield from stream_with_rate_limit_guard(
-        accounts,
-        group_name,
-        _stream_creatives,
-        resource_name="ad_creatives",
-        on_partial=mark_partial_creative_account,
     )
 
 
@@ -128,5 +106,4 @@ all_sources = [
     ads_all,
     campaigns_all,
     adsets_all,
-    creatives_all,
 ]

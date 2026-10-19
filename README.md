@@ -72,9 +72,10 @@ python main.py subscription_facebook d1c
 ```
 
 Local Facebook API execution is restricted to exact group `d1c`. Other groups
-must run in GitHub Actions. The Facebook workflows use incremental creative
-refreshes Monday-Saturday, a full reconciliation on Sunday, and expose
-`auto`/`incremental`/`full` modes for manual runs.
+must run in GitHub Actions. The regular `facebook` pipeline loads Insights
+metrics plus ads, campaigns, and ad sets; it does not fetch creative details.
+Existing creative rows remain stored but stop refreshing. eSIM and subscription
+Facebook pipelines retain their existing creative refresh behavior.
 
 To identify the ad behind Meta creative error `100 / 2446211`, run **Actions →
 Diagnose Facebook Creative Error (D2) → Run workflow**. Defaults match the
