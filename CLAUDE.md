@@ -111,6 +111,7 @@ Not every Facebook account bills in AED, but Metabase compares them as if they d
 
 ## GitHub Actions Workflows
 - `.github/workflows/_reusable-etl.yml` — Shared job template all pipelines use
+- `diagnose-facebook-creatives.yml` — Manual, read-only D2 creative error diagnosis; uses only `FB_GROUPS`, retains creative IDs from batch callbacks, and publishes linked ads in the run summary/artifact. Defaults to `d2a`; no local execution or destination/state writes.
 - Daily schedules (UTC): Facebook batches A/B/C 0:00/1:00/2:00 (5:30/6:30/7:30 IST), Subscription Google 2:50 (8:20 IST), Google Ads 3:00 (8:30 IST), Subscription Facebook 3:00 (8:30 IST), GA4 4:30, Google Play 5:10, App Store 6:10, eSIM Facebook 8:30
 - Hourly: eSIM Analytics API every hour at :15
 - `backfill.yml` — Manual dispatch workflow for historical data loads

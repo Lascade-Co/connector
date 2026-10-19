@@ -1,0 +1,77 @@
+name: Diagnose Facebook Creative Error (D2)
+
+on:
+  workflow_dispatch:
+    inputs:
+      group:
+        description: "Exact Facebook group (the supplied log failed in d2a)"
+        type: choice
+        default: d2a
+        options: [d2a, d2b, d2c, d2]
+      account_id:
+        description: "Ad account ID; leave blank to check every account in the selected group"
+        type: string
+        default: "912296209831774"
+      scan_all:
+        description: "Continue scanning after finding error 2446211"
+        type: boolean
+        default: false
+      max_creatives:
+        description: "Maximum creative reads per account (bounded to protect Meta quota)"
+        type: string
+        default: "5000"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: facebook-creative-diagnostic-d2
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run diagnostic unit tests (no API calls)
+        run: python -m unittest tests.test_facebook_creative_diagnostic -v
+      - name: Restore Facebook group configuration
+        env:
+          FB_GROUPS: ${{ secrets.FB_GROUPS }}
+        run: |
+          test -n "$FB_GROUPS" || { echo 'FB_GROUPS secret is missing'; exit 1; }
+          mkdir -p secrets
+          printf '%s' "$FB_GROUPS" | base64 --decode > secrets/facebook.json
+      - name: Identify failing creatives and linked ads (read only)
+        env:
+          DIAG_GROUP: ${{ inputs.group }}
+          DIAG_ACCOUNT: ${{ inputs.account_id }}
+          DIAG_SCAN_ALL: ${{ inputs.scan_all }}
+          DIAG_MAX_CREATIVES: ${{ inputs.max_creatives }}
+        run: |
+          flags=()
+          if [ "$DIAG_SCAN_ALL" = 'true' ]; then flags+=(--scan-all); fi
+          python -m pipelines.facebook.diagnose_creatives \
+            --group "$DIAG_GROUP" --account-id "$DIAG_ACCOUNT" \
+            --max-creatives "$DIAG_MAX_CREATIVES" "${flags[@]}"
+      - name: Publish diagnostic summary
+        if: always()
+        run: |
+          if [ -f diagnostic-report/summary.md ]; then
+            cat diagnostic-report/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload diagnostic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: facebook-creative-diagnostic-${{ github.run_id }}
+          path: diagnostic-report/
+          if-no-files-found: warn
+          retention-days: 7

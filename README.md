@@ -76,6 +76,22 @@ must run in GitHub Actions. The Facebook workflows use incremental creative
 refreshes Monday-Saturday, a full reconciliation on Sunday, and expose
 `auto`/`incremental`/`full` modes for manual runs.
 
+To identify the ad behind Meta creative error `100 / 2446211`, run **Actions →
+Diagnose Facebook Creative Error (D2) → Run workflow**. Defaults match the
+reported failure: group `d2a`, account `912296209831774`. Choose an exact D2
+group; clear the account input to check all accounts in that group. The workflow
+runs mocked unit tests before restoring the existing base64 `FB_GROUPS` secret.
+It then reads creatives with the ETL field set, preserving each failed creative
+ID and mapping it to every accessible linked ad. It stops after the first batch
+containing the target error by default; enable `scan_all` for a broader scan.
+Results, ad names, and Ads Manager links appear in the run summary and the
+seven-day `facebook-creative-diagnostic-*` artifact. Other errors and incomplete
+scans are reported separately. A creative without an accessible linked ad still
+appears in the report. The diagnostic is GitHub Actions-only and does not load
+data, change ads, or use destination credentials. A completed scan without the
+target error means it was not reproduced; it does not rule out listing-only
+failures or inaccessible/deleted objects.
+
 #### Google Ads
 ```bash
 python main.py google d1    # Run group d1
