@@ -12,11 +12,11 @@ from facebook_business.exceptions import FacebookRequestError
 from pipelines.facebook import probe_creative as diagnostic
 
 
-def facebook_error(code=100, subcode=2446211, http_status=400):
+def facebook_error(code=100, subcode=2446211, http_status=400, message="private-error-message"):
     return FacebookRequestError(
         "private exception message", {"access_token": "private-request-token"},
         http_status, {}, {"error": {
-            "message": "private-error-message", "code": code,
+            "message": message, "code": code,
             "error_subcode": subcode, "fbtrace_id": "trace-123",
         }},
     )
@@ -28,6 +28,7 @@ class CreativeProbeTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.output = Path(self.directory.name)
         self.api = Mock()
+        self.api.call.return_value.json.return_value = {"data": []}
         self.account = SimpleNamespace(get_api=Mock(return_value=self.api))
         self.report = dict(
             account_id="123", group="d2a", creative_id="456", ad_id="789",
@@ -303,6 +304,157 @@ class CreativeProbeTests(unittest.TestCase):
         results = self.run_probe()
         self.assertEqual(results["story_page_access"]["status"], "success")
         self.page.assert_called_once_with("321", api=self.api)
+
+    def known_story_page(self):
+        def read(fields):
+            result = self.payload(fields)
+            if "object_story_spec" in fields:
+                result["object_story_spec"] = {"page_id": "321"}
+            return result
+
+        self.direct_outcome = read
+
+    def permission_responses(self, assigned, permissions=None):
+        def call(method, path, params):
+            self.assertEqual(method, "GET")
+            if path == ("me", "assigned_pages"):
+                self.assertEqual(json.loads(params["pages"]), ["321"])
+                self.assertEqual(params["fields"], "id,tasks")
+                response = assigned
+            else:
+                self.assertEqual(path, ("me", "permissions"))
+                response = {"data": []} if permissions is None else permissions
+            if isinstance(response, Exception):
+                raise response
+            return SimpleNamespace(json=lambda: response)
+
+        self.api.call.side_effect = call
+
+    def test_permission_statuses_are_filtered_and_listing_completeness_recorded(self):
+        permissions = {"data": [
+            {"permission": "ads_read", "status": "granted"},
+            {"permission": "pages_read_engagement", "status": "declined"},
+            {"permission": "private-unrelated-permission", "status": "granted"},
+        ]}
+        self.permission_responses({"data": []}, permissions)
+        results = self.run_probe()
+        observations = self.report["observations"]
+        self.assertTrue(observations["permission_listing_complete"])
+        self.assertEqual(observations["token_permissions"], {
+            "ads_read": "granted", "pages_read_engagement": "declined",
+        })
+        self.assertEqual(results["token_permissions"]["status"], "success")
+        self.assertNotIn("private-unrelated-permission", (self.output / "report.json").read_text())
+
+    def test_paginated_permissions_are_marked_incomplete_without_saving_next_url(self):
+        self.permission_responses({"data": []}, {
+            "data": [{"permission": "ads_read", "status": "granted"}],
+            "paging": {"next": "https://private-next-url/?access_token=private-token"},
+        })
+        self.run_probe()
+        self.assertFalse(self.report["observations"]["permission_listing_complete"])
+        self.assertNotIn("private-token", (self.output / "report.json").read_text())
+
+    def test_successful_page_assignment_matches_exact_page_without_saving_raw_tasks(self):
+        self.known_story_page()
+        self.permission_responses({"data": [{
+            "id": "321", "tasks": ["ADVERTISE", "private-task"], "access_token": "private-page-token",
+        }]})
+        self.run_probe()
+        self.assertTrue(self.report["observations"]["page_assignment"])
+        self.assertEqual(self.report["observations"]["target_page_id"], "321")
+        self.assertEqual(self.report["observations"]["target_page_tasks"], ["ADVERTISE"])
+        persisted = (self.output / "report.json").read_text()
+        self.assertNotIn("private-task", persisted)
+        self.assertNotIn("private-page-token", persisted)
+
+    def test_successful_complete_empty_assignment_means_page_not_assigned(self):
+        self.known_story_page()
+        self.permission_responses({"data": []})
+        self.run_probe()
+        self.assertIs(self.report["observations"]["page_assignment"], False)
+
+    def test_incomplete_or_failed_assignment_remains_unknown(self):
+        for assigned in (
+            facebook_error(subcode=999),
+            facebook_error(code=200, message="private permission denial"),
+            {"data": [], "paging": {"next": "private-next-page"}},
+            {},
+            {"data": [{}]},
+            {"data": ["malformed-row"]},
+        ):
+            with self.subTest(assigned_type=type(assigned).__name__):
+                self.report["probes"] = []
+                self.report["observations"] = {}
+                self.known_story_page()
+                self.permission_responses(assigned)
+                self.run_probe()
+                self.assertIsNone(self.report["observations"]["page_assignment"])
+
+    def test_malformed_permission_listing_cannot_claim_complete(self):
+        self.permission_responses({"data": []}, {"data": ["malformed-row"]})
+        self.run_probe()
+        self.assertFalse(self.report["observations"].get("permission_listing_complete", False))
+
+    def test_page_permission_denial_allows_remaining_access_checks(self):
+        self.known_story_page()
+        self.install_sdk()
+        self.page.return_value.api_get.side_effect = facebook_error(code=10, message="private permission denied")
+        self.probe = diagnostic.CreativeProbe(self.account, self.report, self.output)
+        self.probe.run()
+        results = {entry["name"]: entry for entry in self.report["probes"]}
+        self.assertEqual(results["story_page_access"]["status"], "error")
+        self.assertEqual(results["story_page_access"]["error"]["category"], "permission_related")
+        self.assertEqual(results["token_permissions"]["status"], "success")
+        self.assertEqual(self.report["status"], "complete")
+
+    def test_permission_error_category_does_not_publish_error_message(self):
+        self.known_story_page()
+        message = "Unsupported get request. Object private-object cannot be loaded due to missing permissions; private-token"
+        self.permission_responses(facebook_error(message=message))
+        results = self.run_probe()
+        self.assertEqual(results["assigned_page_access"]["error"]["category"], "object_missing_or_inaccessible")
+        persisted = (self.output / "report.json").read_text()
+        self.assertNotIn("private-object", persisted)
+        self.assertNotIn("private-token", persisted)
+
+    def test_optional_permission_denial_continues_to_permission_listing(self):
+        self.direct_outcome = lambda fields: (
+            facebook_error(code=10) if "asset_feed_spec" in fields else self.payload(fields)
+        )
+        results = self.run_probe()
+        self.assertEqual(results["optional:asset_feed_spec"]["status"], "error")
+        self.assertEqual(results["token_permissions"]["status"], "success")
+        self.assertEqual(self.report["status"], "complete")
+
+    def test_optional_permission_code_with_http429_still_stops(self):
+        self.known_story_page()
+        self.install_sdk()
+        self.page.return_value.api_get.side_effect = facebook_error(code=10, http_status=429)
+        self.probe = diagnostic.CreativeProbe(self.account, self.report, self.output)
+        self.probe.run()
+        results = {entry["name"]: entry for entry in self.report["probes"]}
+        self.assertEqual(self.report["status"], "incomplete_auth_or_quota")
+        self.assertNotIn("token_permissions", results)
+        self.api.call.assert_not_called()
+
+    def test_full_with_asset_feed_can_verify_workaround_even_when_default_full_fails(self):
+        default = set(diagnostic.DEFAULT_ADCREATIVE_FIELDS)
+
+        def read(fields):
+            if set(fields) == default:
+                return facebook_error()
+            return self.payload(fields)
+
+        self.direct_outcome = read
+        results = self.run_probe()
+        self.assertEqual(results["full_direct"]["status"], "error")
+        self.assertEqual(results["full_with:asset_feed_spec"]["status"], "success")
+        self.assertEqual(set(results["full_with:asset_feed_spec"]["requested_fields"]), default | {"asset_feed_spec"})
+        self.assertEqual(results["full_with:degrees_of_freedom_spec"]["status"], "success")
+        self.assertEqual(results["story_page_only"]["status"], "success")
+        self.assertEqual(results["story_explicit_fields"]["status"], "success")
+        self.assertEqual(self.report["status"], "complete")
 
 
 class CreativeProbeCliTests(unittest.TestCase):
