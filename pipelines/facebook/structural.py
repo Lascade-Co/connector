@@ -6,7 +6,10 @@ import functools
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
-from pipelines.facebook.creative_status import mark_partial_resource
+from pipelines.facebook.creative_status import (
+    NON_QUOTA_RESOURCES,
+    mark_partial_resource,
+)
 from pipelines.facebook.rate_limit import stream_with_rate_limit_guard
 
 
@@ -38,6 +41,15 @@ def load_structural_resource(
     ``row_transform`` runs after tagging, so it can read ``account_id``. It is
     used to restate monetary fields; leaving it unset preserves raw rows.
     """
+
+    # Everything parked from here is parked for throttling, so a name listed as
+    # non-quota would be misclassified by `account_has_quota_parking` and let a
+    # genuinely throttled account keep loading. Fail loudly rather than drift.
+    if resource_name in NON_QUOTA_RESOURCES:
+        raise ValueError(
+            f"{resource_name!r} is registered as a non-quota parking reason and "
+            "cannot also be loaded as a throttle-guarded current-state resource"
+        )
 
     yield from stream_with_rate_limit_guard(
         accounts,

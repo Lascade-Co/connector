@@ -103,6 +103,23 @@ class FacebookStructuralGuardTests(unittest.TestCase):
         )
         third.assert_not_called()
 
+    def tearDown(self):
+        reset_partial_resources()
+
+    def test_a_non_quota_name_cannot_be_loaded_as_a_guarded_resource(self):
+        # Otherwise a genuine throttle on it would be classed as non-quota and
+        # the account would keep loading through every remaining resource.
+        with self.assertRaisesRegex(ValueError, INSIGHTS_RESOURCE):
+            list(
+                load_structural_resource(
+                    [{"account_id": "act-1", "token": "secret"}],
+                    "d1c",
+                    source_factory=Mock(),
+                    source_attribute="ads",
+                    resource_name=INSIGHTS_RESOURCE,
+                )
+            )
+
     def test_degraded_insights_parking_does_not_stop_current_state_resources(self):
         # A degraded Insights report is not a throttling signal, so the
         # account's ads, campaigns and ad sets must still refresh. This is the

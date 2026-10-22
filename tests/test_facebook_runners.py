@@ -247,7 +247,7 @@ class RunInsightsIsolatedTests(unittest.TestCase):
         with patch.object(
             runner, "run_insights_in_windows", side_effect=_chained(_degraded("act-1"))
         ):
-            runner.run_insights_isolated(
+            parked = runner.run_insights_isolated(
                 Mock(),
                 Mock(),
                 self.CREDS,
@@ -257,6 +257,7 @@ class RunInsightsIsolatedTests(unittest.TestCase):
 
         # The registry is the only record; the function deliberately returns
         # nothing, so no caller can branch on a parked account.
+        self.assertIsNone(parked)
         self.assertEqual(get_partial_resources(), {"insights": ("act-1",)})
 
     def test_non_degraded_failure_propagates_without_parking(self):
@@ -282,7 +283,7 @@ class RunInsightsIsolatedTests(unittest.TestCase):
         insights = Mock()
 
         with patch.object(runner, "run_insights_in_windows") as run_windows:
-            runner.run_insights_isolated(
+            loaded = runner.run_insights_isolated(
                 pipeline,
                 insights,
                 self.CREDS,
@@ -290,6 +291,7 @@ class RunInsightsIsolatedTests(unittest.TestCase):
                 backfill_env_name="FB_BACKFILL_DAYS",
             )
 
+        self.assertIsNone(loaded)
         self.assertEqual(get_partial_resources(), {})
         run_windows.assert_called_once_with(
             pipeline,
@@ -324,6 +326,12 @@ class QuotaParkingPredicateTests(unittest.TestCase):
         mark_partial_resource("ad_creatives", "act-1")
 
         self.assertTrue(account_has_quota_parking("act-1"))
+
+    def test_querying_an_unknown_account_does_not_insert(self):
+        # `_partial_resources` is a defaultdict: a subscript read would create
+        # an empty entry as a side effect of asking the question.
+        self.assertFalse(account_has_quota_parking("act-unknown"))
+        self.assertEqual(get_partial_resources(), {})
 
     def test_another_accounts_parking_does_not_leak(self):
         mark_partial_resource("ads", "act-other")
