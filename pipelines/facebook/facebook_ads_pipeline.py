@@ -111,20 +111,17 @@ def run():
     for idx, account_id in enumerate(accounts):
         creds = [{"account_id": account_id, "token": group["token"]}]
         logging.info("Running Facebook Ads pipeline for account: %s", account_id)
-        insights_loaded = run_insights_isolated(
+        run_insights_isolated(
             pipeline,
             insights_resource,
             creds,
             group_name,
             backfill_env_name="FB_BACKFILL_DAYS",
         )
-        if insights_loaded:
-            if os.getenv("FB_BACKFILL_DAYS"):
-                logging.info("Insights backfill mode: skipping current-state resources")
-            else:
-                run_structural_resources(
-                    pipeline, structural_resources, creds, group_name
-                )
+        if os.getenv("FB_BACKFILL_DAYS"):
+            logging.info("Insights backfill mode: skipping current-state resources")
+        else:
+            run_structural_resources(pipeline, structural_resources, creds, group_name)
 
         if idx < len(accounts) - 1 and delay_seconds > 0:
             logging.info(

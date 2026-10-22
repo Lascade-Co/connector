@@ -36,9 +36,6 @@ class FacebookWithoutCreativesTests(unittest.TestCase):
         def load_insights(destination, resource, creds, group, **kwargs):
             self.assertEqual(kwargs, {"backfill_env_name": "FB_BACKFILL_DAYS"})
             loaded["insights"] = exhaust_resource(resource, creds, group, **bounds)
-            # Truthy, or the caller treats the account as parked and skips its
-            # current-state resources.
-            return True
 
         def load_metadata(destination, resources, creds, group):
             for resource in resources:

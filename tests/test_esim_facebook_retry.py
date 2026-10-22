@@ -120,9 +120,6 @@ class EsimFacebookRunnerTests(unittest.TestCase):
 
         def run_insights(_pipeline, _resource, creds, _group_name, **_kwargs):
             events.append(("insights", creds[0]["account_id"]))
-            # Truthy, or the caller treats the account as parked and skips its
-            # current-state resources.
-            return True
 
         insights = object()
 

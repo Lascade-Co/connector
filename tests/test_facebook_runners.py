@@ -13,6 +13,8 @@ from pipelines.esim_facebook import esim_facebook_pipeline
 from pipelines.facebook import facebook_ads_pipeline
 from pipelines.facebook import runner
 from pipelines.facebook.creative_status import (
+    INSIGHTS_RESOURCE,
+    account_has_quota_parking,
     get_partial_resources,
     mark_partial_resource,
     reset_partial_resources,
@@ -241,11 +243,11 @@ class RunInsightsIsolatedTests(unittest.TestCase):
     def tearDown(self):
         reset_partial_resources()
 
-    def test_degraded_report_parks_the_account_and_returns_false(self):
+    def test_degraded_report_parks_the_account_in_the_registry(self):
         with patch.object(
             runner, "run_insights_in_windows", side_effect=_chained(_degraded("act-1"))
         ):
-            loaded = runner.run_insights_isolated(
+            runner.run_insights_isolated(
                 Mock(),
                 Mock(),
                 self.CREDS,
@@ -253,7 +255,8 @@ class RunInsightsIsolatedTests(unittest.TestCase):
                 backfill_env_name="FB_BACKFILL_DAYS",
             )
 
-        self.assertFalse(loaded)
+        # The registry is the only record; the function deliberately returns
+        # nothing, so no caller can branch on a parked account.
         self.assertEqual(get_partial_resources(), {"insights": ("act-1",)})
 
     def test_non_degraded_failure_propagates_without_parking(self):
@@ -274,12 +277,12 @@ class RunInsightsIsolatedTests(unittest.TestCase):
         self.assertIs(raised.exception, wrapped)
         self.assertEqual(get_partial_resources(), {})
 
-    def test_successful_load_returns_true_and_forwards_kwargs(self):
+    def test_successful_load_parks_nothing_and_forwards_kwargs(self):
         pipeline = Mock()
         insights = Mock()
 
         with patch.object(runner, "run_insights_in_windows") as run_windows:
-            loaded = runner.run_insights_isolated(
+            runner.run_insights_isolated(
                 pipeline,
                 insights,
                 self.CREDS,
@@ -287,7 +290,6 @@ class RunInsightsIsolatedTests(unittest.TestCase):
                 backfill_env_name="FB_BACKFILL_DAYS",
             )
 
-        self.assertTrue(loaded)
         self.assertEqual(get_partial_resources(), {})
         run_windows.assert_called_once_with(
             pipeline,
@@ -296,6 +298,37 @@ class RunInsightsIsolatedTests(unittest.TestCase):
             "d1c",
             backfill_env_name="FB_BACKFILL_DAYS",
         )
+
+
+class QuotaParkingPredicateTests(unittest.TestCase):
+    """Only throttling may stop an account's remaining current-state resources."""
+
+    def setUp(self):
+        reset_partial_resources()
+
+    def tearDown(self):
+        reset_partial_resources()
+
+    def test_insights_parking_alone_is_not_quota_parking(self):
+        mark_partial_resource(INSIGHTS_RESOURCE, "act-1")
+
+        self.assertFalse(account_has_quota_parking("act-1"))
+
+    def test_a_throttled_current_state_resource_is_quota_parking(self):
+        mark_partial_resource("ads", "act-1")
+
+        self.assertTrue(account_has_quota_parking("act-1"))
+
+    def test_both_marks_still_count_as_quota_parking(self):
+        mark_partial_resource(INSIGHTS_RESOURCE, "act-1")
+        mark_partial_resource("ad_creatives", "act-1")
+
+        self.assertTrue(account_has_quota_parking("act-1"))
+
+    def test_another_accounts_parking_does_not_leak(self):
+        mark_partial_resource("ads", "act-other")
+
+        self.assertFalse(account_has_quota_parking("act-1"))
 
 
 class FacebookAccountIsolationTests(unittest.TestCase):
@@ -307,20 +340,18 @@ class FacebookAccountIsolationTests(unittest.TestCase):
     def tearDown(self):
         reset_partial_resources()
 
-    def assert_parked_account_skips_only_its_own_structural_resources(
-        self, module, platform
-    ):
+    def assert_parked_account_still_refreshes_current_state(self, module, platform):
         insights = Mock(name=f"{platform}_insights")
 
         def structural(creds, group_name):
             return ("structural", creds[0]["account_id"], group_name)
 
         def run_insights(_pipeline, _resource, creds, _group_name, **_kwargs):
+            # Mirrors `run_insights_isolated`: park in the registry, return
+            # nothing. A parked account's current-state load is unaffected.
             account_id = creds[0]["account_id"]
             if account_id == "act-parked":
-                mark_partial_resource("insights", account_id)
-                return False
-            return True
+                mark_partial_resource(INSIGHTS_RESOURCE, account_id)
 
         with (
             patch.object(module.sys, "argv", ["main.py", platform, "any-group"]),
@@ -350,25 +381,33 @@ class FacebookAccountIsolationTests(unittest.TestCase):
                 [{"account_id": "act-ok", "token": "secret"}],
             ],
         )
-        run_structural.assert_called_once_with(
-            pipeline_factory.return_value,
-            [structural],
-            [{"account_id": "act-ok", "token": "secret"}],
-            "any-group",
+        # A degraded Insights report says nothing about the account's ads,
+        # campaigns or budgets, so both accounts still refresh them.
+        self.assertEqual(
+            run_structural.call_args_list,
+            [
+                call(
+                    pipeline_factory.return_value,
+                    [structural],
+                    [{"account_id": account_id, "token": "secret"}],
+                    "any-group",
+                )
+                for account_id in ("act-parked", "act-ok")
+            ],
         )
 
     def test_travel_facebook_isolates_a_parked_account(self):
-        self.assert_parked_account_skips_only_its_own_structural_resources(
+        self.assert_parked_account_still_refreshes_current_state(
             facebook_ads_pipeline, "facebook"
         )
 
     def test_esim_facebook_isolates_a_parked_account(self):
-        self.assert_parked_account_skips_only_its_own_structural_resources(
+        self.assert_parked_account_still_refreshes_current_state(
             esim_facebook_pipeline, "esim_facebook"
         )
 
     def test_subscription_facebook_isolates_a_parked_account(self):
-        self.assert_parked_account_skips_only_its_own_structural_resources(
+        self.assert_parked_account_still_refreshes_current_state(
             subscription_facebook_pipeline, "subscription_facebook"
         )
 

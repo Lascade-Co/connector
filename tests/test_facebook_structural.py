@@ -5,6 +5,7 @@ from unittest.mock import Mock, call
 from facebook_business.exceptions import FacebookRequestError
 
 from pipelines.facebook.creative_status import (
+    INSIGHTS_RESOURCE,
     get_partial_resources,
     mark_partial_resource,
     reset_partial_resources,
@@ -101,6 +102,30 @@ class FacebookStructuralGuardTests(unittest.TestCase):
             [call("ads-resource"), call("adsets-resource")],
         )
         third.assert_not_called()
+
+    def test_degraded_insights_parking_does_not_stop_current_state_resources(self):
+        # A degraded Insights report is not a throttling signal, so the
+        # account's ads, campaigns and ad sets must still refresh. This is the
+        # wiring the quota predicate exists to protect.
+        mark_partial_resource(INSIGHTS_RESOURCE, "act-1")
+        pipeline = Mock()
+        resources = [
+            Mock(return_value="ads-resource"),
+            Mock(return_value="adsets-resource"),
+            Mock(return_value="campaigns-resource"),
+        ]
+
+        run_structural_resources(
+            pipeline,
+            resources,
+            [{"account_id": "act-1", "token": "secret"}],
+            "d1c",
+        )
+
+        self.assertEqual(
+            pipeline.run.call_args_list,
+            [call("ads-resource"), call("adsets-resource"), call("campaigns-resource")],
+        )
 
     def test_partial_account_does_not_stop_a_different_account(self):
         mark_partial_resource("ad_sets", "act-1")

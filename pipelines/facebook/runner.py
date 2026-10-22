@@ -13,7 +13,8 @@ from dlt.pipeline.exceptions import PipelineStepFailed
 from facebook_ads.exceptions import DegradedInsightsReport
 from facebook_ads.insights import plan_insights_date_windows
 from pipelines.facebook.creative_status import (
-    account_has_partial_resources,
+    INSIGHTS_RESOURCE,
+    account_has_quota_parking,
     format_partial_resources,
     get_partial_resources,
     mark_partial_resource,
@@ -66,7 +67,7 @@ def run_structural_resources(
     for source in resources:
         resource = source(creds, group_name)
         pipeline.run(resource)
-        if account_has_partial_resources(account_id):
+        if account_has_quota_parking(account_id):
             logging.warning(
                 "Facebook account %s has a quota-limited resource; skipping its "
                 "remaining current-state resources for this run",
@@ -87,7 +88,7 @@ def raise_for_partial_resources(pipeline_label: str) -> None:
         " An account parked for `insights` wrote nothing for the window it was "
         "parked on and that window's checkpoint did not advance, so the next "
         "run replans it."
-        if "insights" in partial
+        if INSIGHTS_RESOURCE in partial
         else ""
     )
     raise RuntimeError(
@@ -178,11 +179,11 @@ def run_insights_isolated(
     group_name: str,
     *,
     backfill_env_name: str,
-) -> bool:
+) -> None:
     """Load one account's Insights, parking it if Meta served a degraded report.
 
-    Returns False when the account was parked, so the caller skips its
-    current-state resources and moves on to the next account.
+    Returns nothing: parking is observable only through the registry
+    (`get_partial_resources`), so a caller must not branch on the result.
     """
 
     account_id = creds[0]["account_id"]
@@ -206,9 +207,6 @@ def run_insights_isolated(
             degraded,
             exc_info=True,
         )
-        # This also makes `account_has_partial_resources(account_id)` true, which
-        # `run_structural_resources` uses to break out early. Harmless while the
-        # caller skips current-state resources for a parked account outright.
-        mark_partial_resource("insights", account_id)
-        return False
-    return True
+        # The mark feeds the end-of-run report only; `account_has_quota_parking`
+        # deliberately ignores it, since this is not a throttling signal.
+        mark_partial_resource(INSIGHTS_RESOURCE, account_id)
