@@ -8,7 +8,7 @@ from pipelines.facebook.creative_status import reset_partial_resources
 from pipelines.facebook.runner import (
     clickhouse_destination,
     raise_for_partial_resources,
-    run_insights_in_windows,
+    run_insights_isolated,
     run_structural_resources,
 )
 from utils import enforce_local_facebook_group, get_for_group
@@ -47,17 +47,17 @@ def run():
     for idx, account_id in enumerate(accounts):
         creds = [{"account_id": account_id, "token": group["token"]}]
         logging.info("Running esim Facebook Ads pipeline for account: %s", account_id)
-        run_insights_in_windows(
+        if run_insights_isolated(
             pipeline,
             all_sources[0],
             creds,
             group_name,
             backfill_env_name="ESIM_FB_BACKFILL_DAYS",
-        )
-        if os.getenv("ESIM_FB_BACKFILL_DAYS"):
-            logging.info("Insights backfill mode: skipping current-state resources")
-        else:
-            run_structural_resources(pipeline, all_sources[1:], creds, group_name)
+        ):
+            if os.getenv("ESIM_FB_BACKFILL_DAYS"):
+                logging.info("Insights backfill mode: skipping current-state resources")
+            else:
+                run_structural_resources(pipeline, all_sources[1:], creds, group_name)
 
         if idx < len(accounts) - 1 and delay_seconds > 0:
             logging.info(

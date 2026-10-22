@@ -16,7 +16,7 @@ on:
           - esim_facebook
           - subscription_facebook
       groups:
-        description: "Groups to backfill (comma-separated, e.g., 'd1,m4,d2' or single like 'd1')"
+        description: "Groups to backfill (comma-separated, e.g., 'd1,m4,d2' or single like 'd1'); each runs as its own matrix job"
         type: string
         required: true
         default: "d1"
@@ -26,49 +26,50 @@ on:
         required: true
 
 jobs:
-  # Parse groups and determine execution strategy
+  # Parse groups into a JSON array for the backfill matrix
   prepare:
     runs-on: ubuntu-latest
     outputs:
       groups_array: ${{ steps.parse.outputs.groups_array }}
-      is_single: ${{ steps.parse.outputs.is_single }}
     steps:
       - name: Parse groups input
         id: parse
+        # Passed via env, not interpolated into the script: ${{ }} is substituted
+        # before bash sees the line, so a quote in the input would break out of it.
+        env:
+          INPUT_GROUPS: ${{ inputs.groups }}
         run: |
-          # Remove spaces and split by comma
-          GROUPS="${{ inputs.groups }}"
-          GROUPS_CLEAN=$(echo "$GROUPS" | tr -d ' ')
-          
-          # Convert to JSON array format
-          IFS=',' read -ra GROUP_ARRAY <<< "$GROUPS_CLEAN"
-          GROUPS_JSON=$(printf '%s\n' "${GROUP_ARRAY[@]}" | jq -R . | jq -s -c .)
-          
-          echo "groups_array=$GROUPS_JSON" >> $GITHUB_OUTPUT
-          
-          # Check if single group
-          if [ ${#GROUP_ARRAY[@]} -eq 1 ]; then
-            echo "is_single=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_single=false" >> $GITHUB_OUTPUT
+          # NOT named GROUPS: that is a bash special variable (the caller's group
+          # IDs) and bash silently ignores assignments to it, which is the bug
+          # this job used to have. Do not rename this back.
+          # Split on commas, trim, drop empties, dedupe in the operator's order
+          # (`unique` would sort, so m4c,d2a,d1a would run as d1a,d2a,m4c).
+          GROUPS_JSON=$(jq -cn --arg raw "$INPUT_GROUPS" '
+            [$raw | split(",")[] | gsub("^\\s+|\\s+$"; "") | select(length > 0)]
+            | reduce .[] as $g ([]; if index($g) then . else . + [$g] end)
+          ')
+
+          # Guards are if/then/fi, not `cmd && { ...; }`: runners use `bash -e`,
+          # which ignores a failure on the left of && but still gives the
+          # AND-list exit status 1, failing the step if it lands last.
+          if [ "$GROUPS_JSON" = "[]" ]; then
+            echo "::error::No groups parsed from input '$INPUT_GROUPS'"
+            exit 1
           fi
 
-  # Single group backfill (when only one group provided)
-  backfill_single:
-    needs: prepare
-    if: ${{ needs.prepare.outputs.is_single == 'true' }}
-    uses: ./.github/workflows/_reusable-etl.yml
-    with:
-      pipeline: ${{ inputs.pipeline }}
-      group: ${{ inputs.groups }}
-      backfill_days: ${{ inputs.days }}
-      pipeline_name_suffix: _backfill_${{ inputs.groups }}_${{ github.run_id }}
-    secrets: inherit
+          # _reusable-etl.yml interpolates inputs.group straight into run: blocks,
+          # so reject anything that is not a plain group name.
+          INVALID=$(echo "$GROUPS_JSON" | jq -r '.[] | select(test("^[A-Za-z0-9_-]+$") | not)')
+          if [ -n "$INVALID" ]; then
+            echo "::error::Invalid group name(s): $INVALID"
+            exit 1
+          fi
 
-  # Multiple groups backfill in parallel (when multiple groups provided)
+          echo "groups_array=$GROUPS_JSON" >> "$GITHUB_OUTPUT"
+
+  # One job per group, in parallel (a single group is just a one-element matrix)
   backfill_matrix:
     needs: prepare
-    if: ${{ needs.prepare.outputs.is_single == 'false' }}
     strategy:
       matrix:
         group: ${{ fromJSON(needs.prepare.outputs.groups_array) }}

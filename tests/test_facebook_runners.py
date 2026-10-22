@@ -5,10 +5,17 @@ from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 import pendulum
+from dlt.pipeline.exceptions import PipelineStepFailed
 
+from facebook_ads.exceptions import DegradedInsightsReport, InsightsJobFailed
 from pipelines.esim_facebook import esim_facebook_pipeline
 from pipelines.facebook import facebook_ads_pipeline
 from pipelines.facebook import runner
+from pipelines.facebook.creative_status import (
+    get_partial_resources,
+    mark_partial_resource,
+    reset_partial_resources,
+)
 from pipelines.subscription_facebook import subscription_facebook_pipeline
 
 
@@ -21,12 +28,35 @@ GITHUB_RUNNER_ENV = {
 }
 
 
+def _degraded(account_id="act-1"):
+    return DegradedInsightsReport(
+        f"facebook_insights_{account_id}",
+        f"Meta returned a degraded Insights report for account {account_id}.",
+    )
+
+
+def _chained(error):
+    """Reproduce dlt's own `raise PipelineStepFailed(...) from exc`.
+
+    Constructing `PipelineStepFailed` directly sets `.exception` but leaves
+    `__cause__` unset, so only a real `raise ... from` builds the chain the
+    runner sees in production.
+    """
+
+    try:
+        raise PipelineStepFailed(
+            Mock(pipeline_name="fb_ads_d1c"), "extract", None, error
+        ) from error
+    except PipelineStepFailed as wrapped:
+        return wrapped
+
+
 class FacebookRunnerOrderTests(unittest.TestCase):
-    def assert_ran_insights(self, run_windows, insights, group_name, backfill_env):
+    def assert_ran_insights(self, run_insights, insights, group_name, backfill_env):
         """The travel runner binds its currency map onto the insights resource."""
 
-        self.assertEqual(run_windows.call_count, 1)
-        pipeline_arg, insights_arg, creds_arg, group_arg = run_windows.call_args.args
+        self.assertEqual(run_insights.call_count, 1)
+        pipeline_arg, insights_arg, creds_arg, group_arg = run_insights.call_args.args
         delegate = (
             insights_arg.func
             if isinstance(insights_arg, functools.partial)
@@ -36,7 +66,7 @@ class FacebookRunnerOrderTests(unittest.TestCase):
         self.assertEqual(creds_arg, [{"account_id": "act-1", "token": "secret"}])
         self.assertEqual(group_arg, group_name)
         self.assertEqual(
-            run_windows.call_args.kwargs, {"backfill_env_name": backfill_env}
+            run_insights.call_args.kwargs, {"backfill_env_name": backfill_env}
         )
         return pipeline_arg
 
@@ -67,7 +97,7 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                     patch.object(
                         module, "clickhouse_destination", return_value="destination"
                     ),
-                    patch.object(module, "run_insights_in_windows") as run_windows,
+                    patch.object(module, "run_insights_isolated") as run_insights,
                     patch.object(module, "reset_partial_resources"),
                     patch.object(module, "run_structural_resources") as run_structural,
                     patch.object(module, "raise_for_partial_resources"),
@@ -79,7 +109,7 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                 get_for_group.assert_called_once_with("any-group", platform)
                 pipeline_factory.return_value.sync_destination.assert_called_once_with()
                 pipeline_arg = self.assert_ran_insights(
-                    run_windows,
+                    run_insights,
                     insights,
                     "any-group",
                     {
@@ -125,7 +155,7 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                     patch.object(
                         module, "clickhouse_destination", return_value="destination"
                     ),
-                    patch.object(module, "run_insights_in_windows") as run_windows,
+                    patch.object(module, "run_insights_isolated") as run_insights,
                     patch.object(module, "reset_partial_resources"),
                     patch.object(module, "run_structural_resources") as run_structural,
                     patch.object(module, "raise_for_partial_resources"),
@@ -135,10 +165,174 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                     module.run()
 
                 pipeline_arg = self.assert_ran_insights(
-                    run_windows, insights, "any-group", backfill_env
+                    run_insights, insights, "any-group", backfill_env
                 )
                 self.assertEqual(pipeline_arg, pipeline_factory.return_value)
                 run_structural.assert_not_called()
+
+
+class FindDegradedCauseTests(unittest.TestCase):
+    def test_finds_degraded_report_through_dlt_exception_chaining(self):
+        degraded = _degraded("act-1")
+
+        self.assertIs(runner.find_degraded_cause(_chained(degraded)), degraded)
+
+    def test_finds_degraded_report_through_the_exception_carrier(self):
+        degraded = _degraded("act-1")
+        wrapped = PipelineStepFailed(
+            Mock(pipeline_name="fb_ads_d1c"), "extract", None, degraded
+        )
+
+        self.assertIsNone(wrapped.__cause__)
+        self.assertIs(runner.find_degraded_cause(wrapped), degraded)
+
+    def test_unrelated_wrapped_failure_has_no_degraded_cause(self):
+        wrapped = _chained(
+            InsightsJobFailed("facebook_insights_act-1", "boom", status="Job Failed")
+        )
+
+        self.assertIsNone(runner.find_degraded_cause(wrapped))
+
+
+class RunInsightsIsolatedTests(unittest.TestCase):
+    CREDS = [{"account_id": "act-1", "token": "secret"}]
+
+    def setUp(self):
+        reset_partial_resources()
+
+    def tearDown(self):
+        reset_partial_resources()
+
+    def test_degraded_report_parks_the_account_and_returns_false(self):
+        with patch.object(
+            runner, "run_insights_in_windows", side_effect=_chained(_degraded("act-1"))
+        ):
+            loaded = runner.run_insights_isolated(
+                Mock(),
+                Mock(),
+                self.CREDS,
+                "d1c",
+                backfill_env_name="FB_BACKFILL_DAYS",
+            )
+
+        self.assertFalse(loaded)
+        self.assertEqual(get_partial_resources(), {"insights": ("act-1",)})
+
+    def test_non_degraded_failure_propagates_without_parking(self):
+        wrapped = _chained(
+            InsightsJobFailed("facebook_insights_act-1", "boom", status="Job Failed")
+        )
+
+        with patch.object(runner, "run_insights_in_windows", side_effect=wrapped):
+            with self.assertRaises(PipelineStepFailed) as raised:
+                runner.run_insights_isolated(
+                    Mock(),
+                    Mock(),
+                    self.CREDS,
+                    "d1c",
+                    backfill_env_name="FB_BACKFILL_DAYS",
+                )
+
+        self.assertIs(raised.exception, wrapped)
+        self.assertEqual(get_partial_resources(), {})
+
+    def test_successful_load_returns_true_and_forwards_kwargs(self):
+        pipeline = Mock()
+        insights = Mock()
+
+        with patch.object(runner, "run_insights_in_windows") as run_windows:
+            loaded = runner.run_insights_isolated(
+                pipeline,
+                insights,
+                self.CREDS,
+                "d1c",
+                backfill_env_name="FB_BACKFILL_DAYS",
+            )
+
+        self.assertTrue(loaded)
+        self.assertEqual(get_partial_resources(), {})
+        run_windows.assert_called_once_with(
+            pipeline,
+            insights,
+            self.CREDS,
+            "d1c",
+            backfill_env_name="FB_BACKFILL_DAYS",
+        )
+
+
+class FacebookAccountIsolationTests(unittest.TestCase):
+    """A parked account must not take the rest of the group down with it."""
+
+    def setUp(self):
+        reset_partial_resources()
+
+    def tearDown(self):
+        reset_partial_resources()
+
+    def assert_parked_account_skips_only_its_own_structural_resources(
+        self, module, platform
+    ):
+        insights = Mock(name=f"{platform}_insights")
+
+        def structural(creds, group_name):
+            return ("structural", creds[0]["account_id"], group_name)
+
+        def run_insights(_pipeline, _resource, creds, _group_name, **_kwargs):
+            account_id = creds[0]["account_id"]
+            if account_id == "act-parked":
+                mark_partial_resource("insights", account_id)
+                return False
+            return True
+
+        with (
+            patch.object(module.sys, "argv", ["main.py", platform, "any-group"]),
+            patch.object(
+                module,
+                "get_for_group",
+                return_value=({"token": "secret"}, ["act-parked", "act-ok"]),
+            ),
+            patch.object(module, "all_sources", [insights, structural]),
+            patch.object(module, "clickhouse_destination", return_value="destination"),
+            patch.object(
+                module, "run_insights_isolated", side_effect=run_insights
+            ) as run_insights_mock,
+            patch.object(module, "run_structural_resources") as run_structural,
+            patch.object(module.dlt, "pipeline") as pipeline_factory,
+            patch.dict(module.os.environ, GITHUB_RUNNER_ENV, clear=True),
+        ):
+            # `raise_for_partial_resources` is deliberately left unpatched: the
+            # run must still fail visibly once every account has been attempted.
+            with self.assertRaisesRegex(RuntimeError, "insights: act-parked"):
+                module.run()
+
+        self.assertEqual(
+            [call_.args[2] for call_ in run_insights_mock.call_args_list],
+            [
+                [{"account_id": "act-parked", "token": "secret"}],
+                [{"account_id": "act-ok", "token": "secret"}],
+            ],
+        )
+        run_structural.assert_called_once_with(
+            pipeline_factory.return_value,
+            [structural],
+            [{"account_id": "act-ok", "token": "secret"}],
+            "any-group",
+        )
+
+    def test_travel_facebook_isolates_a_parked_account(self):
+        self.assert_parked_account_skips_only_its_own_structural_resources(
+            facebook_ads_pipeline, "facebook"
+        )
+
+    def test_esim_facebook_isolates_a_parked_account(self):
+        self.assert_parked_account_skips_only_its_own_structural_resources(
+            esim_facebook_pipeline, "esim_facebook"
+        )
+
+    def test_subscription_facebook_isolates_a_parked_account(self):
+        self.assert_parked_account_skips_only_its_own_structural_resources(
+            subscription_facebook_pipeline, "subscription_facebook"
+        )
 
 
 class SharedFacebookRunnerTests(unittest.TestCase):

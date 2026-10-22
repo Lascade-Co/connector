@@ -36,6 +36,9 @@ class FacebookWithoutCreativesTests(unittest.TestCase):
         def load_insights(destination, resource, creds, group, **kwargs):
             self.assertEqual(kwargs, {"backfill_env_name": "FB_BACKFILL_DAYS"})
             loaded["insights"] = exhaust_resource(resource, creds, group, **bounds)
+            # Truthy, or the caller treats the account as parked and skips its
+            # current-state resources.
+            return True
 
         def load_metadata(destination, resources, creds, group):
             for resource in resources:
@@ -80,7 +83,7 @@ class FacebookWithoutCreativesTests(unittest.TestCase):
             ) as ads,
             patch.object(sources, "insights_src", side_effect=fake_insights),
             patch.object(
-                pipeline, "run_insights_in_windows", side_effect=load_insights
+                pipeline, "run_insights_isolated", side_effect=load_insights
             ) as insights,
             patch.object(
                 pipeline, "run_structural_resources", side_effect=load_metadata

@@ -8,12 +8,15 @@ from collections.abc import Callable
 from typing import Any
 
 import dlt
+from dlt.pipeline.exceptions import PipelineStepFailed
 
+from facebook_ads.exceptions import DegradedInsightsReport
 from facebook_ads.insights import plan_insights_date_windows
 from pipelines.facebook.creative_status import (
     account_has_partial_resources,
     format_partial_resources,
     get_partial_resources,
+    mark_partial_resource,
 )
 
 
@@ -81,7 +84,8 @@ def raise_for_partial_resources(pipeline_label: str) -> None:
         f"{pipeline_label} resources were only partially loaded "
         f"({format_partial_resources()}). Valid rows and checkpoints were committed; "
         "no saved rows were corrupted. A later reconciliation will retry the "
-        "missing subset."
+        "missing subset; a parked account wrote nothing for its window and its "
+        "checkpoint did not advance, so the next run replans it."
     )
 
 
@@ -131,3 +135,55 @@ def run_insights_in_windows(
                 report_end_date=end,
             )
         )
+
+
+def find_degraded_cause(exc: BaseException) -> DegradedInsightsReport | None:
+    """Walk the wrapped exception chain for the degraded-report guard.
+
+    `pipeline.run` wraps anything escaping extraction in
+    `PipelineStepFailed(...) from exc`, so a caller never sees
+    `DegradedInsightsReport` directly. Both `__cause__` and the documented
+    `PipelineStepFailed.exception` carrier are followed.
+    """
+
+    cur: BaseException | None = exc
+    while cur is not None:
+        if isinstance(cur, DegradedInsightsReport):
+            return cur
+        cur = cur.__cause__ or getattr(cur, "exception", None)
+    return None
+
+
+def run_insights_isolated(
+    pipeline: Any,
+    insights_resource: Callable[..., Any],
+    creds: list[dict[str, str]],
+    group_name: str,
+    **kwargs: Any,
+) -> bool:
+    """Load one account's Insights, parking it if Meta served a degraded report.
+
+    Returns False when the account was parked, so the caller skips its
+    current-state resources and moves on to the next account.
+    """
+
+    account_id = creds[0]["account_id"]
+    try:
+        run_insights_in_windows(
+            pipeline, insights_resource, creds, group_name, **kwargs
+        )
+    except (PipelineStepFailed, DegradedInsightsReport) as exc:
+        degraded = find_degraded_cause(exc)
+        if degraded is None:
+            raise
+        logging.error(
+            "Facebook account %s: %s Parking it for this run.",
+            account_id,
+            degraded,
+        )
+        # This also makes `account_has_partial_resources(account_id)` true, which
+        # `run_structural_resources` uses to break out early. Harmless while the
+        # caller skips current-state resources for a parked account outright.
+        mark_partial_resource("insights", account_id)
+        return False
+    return True

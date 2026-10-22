@@ -120,6 +120,9 @@ class EsimFacebookRunnerTests(unittest.TestCase):
 
         def run_insights(_pipeline, _resource, creds, _group_name, **_kwargs):
             events.append(("insights", creds[0]["account_id"]))
+            # Truthy, or the caller treats the account as parked and skips its
+            # current-state resources.
+            return True
 
         insights = object()
 
@@ -149,7 +152,7 @@ class EsimFacebookRunnerTests(unittest.TestCase):
             patch.object(esim_facebook_pipeline, "all_sources", [insights, structural]),
             patch.object(
                 esim_facebook_pipeline,
-                "run_insights_in_windows",
+                "run_insights_isolated",
                 side_effect=run_insights,
             ),
             patch.object(
@@ -212,7 +215,7 @@ class EsimFacebookRunnerTests(unittest.TestCase):
                 ],
             ),
             patch.object(
-                esim_facebook_pipeline, "run_insights_in_windows"
+                esim_facebook_pipeline, "run_insights_isolated"
             ) as run_insights,
             patch.object(
                 esim_facebook_pipeline, "run_structural_resources"
