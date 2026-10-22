@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 import pendulum
+from dlt.extract.exceptions import ResourceExtractionError
 from dlt.pipeline.exceptions import PipelineStepFailed
 
 from facebook_ads.exceptions import DegradedInsightsReport, InsightsJobFailed
@@ -192,6 +193,43 @@ class FindDegradedCauseTests(unittest.TestCase):
         )
 
         self.assertIsNone(runner.find_degraded_cause(wrapped))
+
+    def test_finds_degraded_report_two_levels_down(self):
+        # `dlt/extract/concurrency.py` wraps in `ResourceExtractionError` without
+        # the `DltSourceException` passthrough, so a report surfacing from the
+        # futures pool arrives one level deeper than the usual chain.
+        degraded = _degraded("act-1")
+        try:
+            try:
+                raise degraded
+            except DegradedInsightsReport as inner:
+                raise ResourceExtractionError(
+                    "facebook_insights_act-1", iter(()), str(inner), "future"
+                ) from inner
+        except ResourceExtractionError as middle:
+            wrapped = _chained(middle)
+
+        self.assertIs(runner.find_degraded_cause(wrapped), degraded)
+
+    def test_unrelated_two_level_chain_has_no_degraded_cause(self):
+        try:
+            try:
+                raise InsightsJobFailed("r", "boom", status="Job Failed")
+            except InsightsJobFailed as inner:
+                raise ResourceExtractionError(
+                    "facebook_insights_act-1", iter(()), "boom", "future"
+                ) from inner
+        except ResourceExtractionError as middle:
+            wrapped = _chained(middle)
+
+        self.assertIsNone(runner.find_degraded_cause(wrapped))
+
+    def test_non_exception_carrier_terminates_the_walk(self):
+        stray = PipelineStepFailed(
+            Mock(pipeline_name="fb_ads_d1c"), "extract", None, "not an exception"
+        )
+
+        self.assertIsNone(runner.find_degraded_cause(stray))
 
 
 class RunInsightsIsolatedTests(unittest.TestCase):

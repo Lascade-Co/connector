@@ -38,6 +38,7 @@ jobs:
         # before bash sees the line, so a quote in the input would break out of it.
         env:
           INPUT_GROUPS: ${{ inputs.groups }}
+          INPUT_DAYS: ${{ inputs.days }}
         run: |
           # NOT named GROUPS: that is a bash special variable (the caller's group
           # IDs) and bash silently ignores assignments to it, which is the bug
@@ -49,13 +50,21 @@ jobs:
             | reduce .[] as $g ([]; if index($g) then . else . + [$g] end)
           ')
 
-          # Guards are if/then/fi, not `cmd && { ...; }`: runners use `bash -e`,
-          # which ignores a failure on the left of && but still gives the
-          # AND-list exit status 1, failing the step if it lands last.
-          if [ "$GROUPS_JSON" = "[]" ]; then
+          # Empty-string too, not just "[]": a jq failure leaves GROUPS_JSON
+          # unset, and relying on `bash -e` to catch it breaks the moment the
+          # assignment is wrapped in anything.
+          if [ -z "$GROUPS_JSON" ] || [ "$GROUPS_JSON" = "[]" ]; then
             echo "::error::No groups parsed from input '$INPUT_GROUPS'"
             exit 1
           fi
+
+          # days reaches a bash arithmetic context in _reusable-etl.yml.
+          case "$INPUT_DAYS" in
+            ''|*[!0-9]*)
+              echo "::error::days must be a positive integer, got '$INPUT_DAYS'"
+              exit 1
+              ;;
+          esac
 
           # _reusable-etl.yml interpolates inputs.group straight into run: blocks,
           # so reject anything that is not a plain group name.

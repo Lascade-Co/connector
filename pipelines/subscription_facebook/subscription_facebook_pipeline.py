@@ -50,13 +50,14 @@ def run():
         logging.info(
             "Running subscription Facebook Ads pipeline for account: %s", account_id
         )
-        if run_insights_isolated(
+        insights_loaded = run_insights_isolated(
             pipeline,
             all_sources[0],
             creds,
             group_name,
             backfill_env_name="SUB_FB_BACKFILL_DAYS",
-        ):
+        )
+        if insights_loaded:
             if os.getenv("SUB_FB_BACKFILL_DAYS"):
                 logging.info("Insights backfill mode: skipping current-state resources")
             else:

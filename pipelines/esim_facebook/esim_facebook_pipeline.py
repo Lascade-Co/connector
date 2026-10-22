@@ -47,13 +47,14 @@ def run():
     for idx, account_id in enumerate(accounts):
         creds = [{"account_id": account_id, "token": group["token"]}]
         logging.info("Running esim Facebook Ads pipeline for account: %s", account_id)
-        if run_insights_isolated(
+        insights_loaded = run_insights_isolated(
             pipeline,
             all_sources[0],
             creds,
             group_name,
             backfill_env_name="ESIM_FB_BACKFILL_DAYS",
-        ):
+        )
+        if insights_loaded:
             if os.getenv("ESIM_FB_BACKFILL_DAYS"):
                 logging.info("Insights backfill mode: skipping current-state resources")
             else:

@@ -78,14 +78,23 @@ def run_structural_resources(
 def raise_for_partial_resources(pipeline_label: str) -> None:
     """Fail visibly after successful packages have committed valid merge rows/state."""
 
-    if not get_partial_resources():
+    partial = get_partial_resources()
+    if not partial:
         return
+    # Quota-parked resources did write their already-yielded rows, so the
+    # wrote-nothing note belongs only to a degraded Insights window.
+    degraded_note = (
+        " An account parked for `insights` wrote nothing for the window it was "
+        "parked on and that window's checkpoint did not advance, so the next "
+        "run replans it."
+        if "insights" in partial
+        else ""
+    )
     raise RuntimeError(
         f"{pipeline_label} resources were only partially loaded "
         f"({format_partial_resources()}). Valid rows and checkpoints were committed; "
         "no saved rows were corrupted. A later reconciliation will retry the "
-        "missing subset; a parked account wrote nothing for its window and its "
-        "checkpoint did not advance, so the next run replans it."
+        f"missing subset.{degraded_note}"
     )
 
 
@@ -142,15 +151,23 @@ def find_degraded_cause(exc: BaseException) -> DegradedInsightsReport | None:
 
     `pipeline.run` wraps anything escaping extraction in
     `PipelineStepFailed(...) from exc`, so a caller never sees
-    `DegradedInsightsReport` directly. Both `__cause__` and the documented
-    `PipelineStepFailed.exception` carrier are followed.
+    `DegradedInsightsReport` directly. The walk is deliberately
+    `__cause__`-first and single-branch, preferring the documented
+    `PipelineStepFailed.exception` carrier only where `__cause__` is unset; it
+    does not follow `__context__`. Both directions of a miss are fail-safe,
+    since an unrecognised cause simply re-raises as before.
     """
 
+    seen: set[int] = set()
     cur: BaseException | None = exc
-    while cur is not None:
+    while cur is not None and id(cur) not in seen:
         if isinstance(cur, DegradedInsightsReport):
             return cur
-        cur = cur.__cause__ or getattr(cur, "exception", None)
+        seen.add(id(cur))
+        # A non-exception `.exception` would make the next hop raise
+        # `AttributeError` while the real failure is still being handled.
+        nxt = cur.__cause__ or getattr(cur, "exception", None)
+        cur = nxt if isinstance(nxt, BaseException) else None
     return None
 
 
@@ -159,7 +176,8 @@ def run_insights_isolated(
     insights_resource: Callable[..., Any],
     creds: list[dict[str, str]],
     group_name: str,
-    **kwargs: Any,
+    *,
+    backfill_env_name: str,
 ) -> bool:
     """Load one account's Insights, parking it if Meta served a degraded report.
 
@@ -170,16 +188,23 @@ def run_insights_isolated(
     account_id = creds[0]["account_id"]
     try:
         run_insights_in_windows(
-            pipeline, insights_resource, creds, group_name, **kwargs
+            pipeline,
+            insights_resource,
+            creds,
+            group_name,
+            backfill_env_name=backfill_env_name,
         )
     except (PipelineStepFailed, DegradedInsightsReport) as exc:
         degraded = find_degraded_cause(exc)
         if degraded is None:
             raise
+        # The Actions log is the only forensic record once several accounts
+        # park across several days, so keep the wrapper and the stack.
         logging.error(
             "Facebook account %s: %s Parking it for this run.",
             account_id,
             degraded,
+            exc_info=True,
         )
         # This also makes `account_has_partial_resources(account_id)` true, which
         # `run_structural_resources` uses to break out early. Harmless while the
