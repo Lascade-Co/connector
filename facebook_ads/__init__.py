@@ -19,12 +19,14 @@ from .helpers import (
     execute_job,
     get_ads_account,
 )
-from .exceptions import InsightsJobFailed
+from .exceptions import DegradedInsightsReport, InsightsJobFailed
 from .insights import (
     INSIGHTS_WINDOW_CHECKPOINT,
+    degraded_report_rows,
     iter_date_windows,
     merge_report_rows,
     split_insight_fields,
+    unique_metrics_missing_despite_delivery,
 )
 from .rate_limit import RATE_LIMIT_CODES
 from .settings import (
@@ -330,13 +332,55 @@ def facebook_insights_source(
             if report_start_date is not None
             else iter_date_windows(start_date, end_date, insights_window_days)
         )
-        for window_start, window_end in windows:
+
+        def fetch_window(
+            window_start: pendulum.DateTime, window_end: pendulum.DateTime
+        ) -> list[dict]:
             report_groups = [fetch_report(core_fields, window_start, window_end)]
             if unique_fields:
                 report_groups.append(
                     fetch_report(unique_fields, window_start, window_end)
                 )
-            yield merge_report_rows(report_groups)
+            return merge_report_rows(report_groups)
+
+        for window_start, window_end in windows:
+            rows = fetch_window(window_start, window_end)
+            degraded = degraded_report_rows(rows)
+            if degraded:
+                # The fault is per-request and each submission creates its own
+                # async job, so one resubmit usually self-heals.
+                first_attempt = rows
+                rows = fetch_window(window_start, window_end)
+                degraded = degraded_report_rows(rows)
+                # A retry that came back short was never validated either, so it
+                # must not pass as a recovery and move the checkpoint.
+                if degraded or len(rows) < len(first_attempt):
+                    dates = sorted({row.get("date_start") for row in degraded})
+                    raise DegradedInsightsReport(
+                        f"facebook_insights_{account_id}",
+                        f"Meta returned a degraded Insights report for account {account_id} "
+                        f"window {window_start.to_date_string()}..{window_end.to_date_string()}: "
+                        f"{len(degraded)} of {len(rows)} rows have zeroed delivery metrics "
+                        f"alongside positive ratios, on {dates or 'no'} date(s) "
+                        f"(first ad_id={degraded[0].get('ad_id') if degraded else None}). "
+                        "Refusing to overwrite stored rows.",
+                    )
+                logging.warning(
+                    "Facebook Insights account %s window %s..%s was degraded on the first "
+                    "attempt and recovered on retry",
+                    account_id,
+                    window_start.to_date_string(),
+                    window_end.to_date_string(),
+                )
+            if unique_fields and unique_metrics_missing_despite_delivery(rows):
+                logging.warning(
+                    "Facebook Insights account %s window %s..%s shows delivery but no row "
+                    "carries any unique metric",
+                    account_id,
+                    window_start.to_date_string(),
+                    window_end.to_date_string(),
+                )
+            yield rows
             dlt.current.resource_state()[
                 INSIGHTS_WINDOW_CHECKPOINT
             ] = window_end.to_date_string()

@@ -136,3 +136,81 @@ def merge_report_rows(
             key = report_row_key(item)
             merged.setdefault(key, {}).update(item)
     return list(merged.values())
+
+
+def _is_zero(value: Any) -> bool:
+    """True only when the value is present and parses to exactly 0."""
+
+    try:
+        return float(value) == 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_positive(value: Any) -> bool:
+    try:
+        return float(value) > 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+# Each count is paired only with the ratios that divide by it, so a positive
+# ratio contradicts a zeroed count. Pairing anything wider fails normal windows:
+# an ad that served impressions and got no clicks legitimately reports
+# ``clicks=0`` with ``cpm>0``, which is why ``cpm`` sits with ``impressions``
+# alone. Checked against 160,599 production rows: no row matches a pair except
+# the known-degraded ones.
+_COUNT_RATIO_PAIRS = (
+    # impressions: ctr = clicks/impressions, cpm = spend/impressions
+    ("impressions", ("ctr", "cpc", "cpm")),
+    # clicks: ctr = clicks/impressions, cpc = spend/clicks
+    ("clicks", ("ctr", "cpc")),
+    # spend: numerator of every per-cost ratio
+    ("spend", ("cpc", "cpm", "cpp")),
+    # reach and unique_clicks come from the separate unique-metrics report
+    ("reach", ("frequency", "cpp", "unique_ctr")),
+    ("unique_clicks", ("unique_ctr",)),
+)
+
+
+def degraded_report_rows(rows: Iterable[DictStrAny]) -> list[DictStrAny]:
+    """Rows whose ratio metrics prove delivery that the absolute counts deny.
+
+    Meta occasionally returns a completed report with its absolute delivery
+    counts zeroed while the derived ratios stay correct. The ratios then prove
+    delivery the counts deny, so the report is refused rather than merged over
+    stored rows.
+
+    For the integer counts the contradiction is exact. ``spend`` is rounded to
+    minor units, so a sub-fils amount could in principle render as ``0`` beside
+    a positive ratio; Meta derives the ratios from the same rounded value, and
+    no production row has ever shown that shape.
+    """
+
+    return [
+        row
+        for row in rows
+        if any(
+            _is_zero(row.get(count))
+            and any(_is_positive(row.get(ratio)) for ratio in ratios)
+            for count, ratios in _COUNT_RATIO_PAIRS
+        )
+    ]
+
+
+def unique_metrics_missing_despite_delivery(rows: Iterable[DictStrAny]) -> bool:
+    """True when a window shows delivery but no row carries any unique metric.
+
+    Only meaningful when the unique-metrics report was actually requested; the
+    caller checks that. A production anomaly whose mechanism is not yet
+    understood, so it only warns.
+    """
+
+    window = list(rows)
+    if not any(_is_positive(row.get("impressions")) for row in window):
+        return False
+    return not any(
+        row.get(field) is not None
+        for row in window
+        for field in UNIQUE_INSIGHT_METRIC_FIELDS
+    )

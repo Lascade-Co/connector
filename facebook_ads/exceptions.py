@@ -21,3 +21,7 @@ class InsightsJobFailed(DltResourceException):
         self.error_code = error_code
         self.error_subcode = error_subcode
         super().__init__(resource_name, msg)
+
+
+class DegradedInsightsReport(DltResourceException):
+    """Raised when Meta returns a completed report with zeroed delivery metrics."""

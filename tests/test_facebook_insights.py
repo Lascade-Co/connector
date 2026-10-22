@@ -1,3 +1,4 @@
+import contextlib
 import unittest
 from unittest.mock import Mock, patch
 
@@ -5,15 +6,21 @@ import pendulum
 
 import facebook_ads as facebook_ads_module
 from facebook_ads import _is_splittable_insights_failure
-from facebook_ads.exceptions import InsightsJobFailed, InsightsJobTimeout
+from facebook_ads.exceptions import (
+    DegradedInsightsReport,
+    InsightsJobFailed,
+    InsightsJobTimeout,
+)
 from facebook_ads.helpers import execute_job
 from facebook_ads.insights import (
     INSIGHTS_SOURCE_NAME,
     INSIGHTS_WINDOW_CHECKPOINT,
+    degraded_report_rows,
     iter_date_windows,
     merge_report_rows,
     plan_insights_date_windows,
     split_insight_fields,
+    unique_metrics_missing_despite_delivery,
 )
 from facebook_ads.settings import INSIGHTS_PRIMARY_KEY
 
@@ -444,6 +451,262 @@ class InsightsResultPagingTests(unittest.TestCase):
         self.assertEqual(extracted[0]["trial_start_value"], 15.5)
         self.assertEqual(extracted[0]["subscriptions"], 2.0)
         self.assertEqual(extracted[0]["subscription_value"], 24.75)
+
+
+class DegradedReportTests(unittest.TestCase):
+    def test_zero_clicks_with_positive_cpm_is_a_normal_row_and_is_not_flagged(self):
+        # The ordinary production shape: an ad that served impressions and got no
+        # clicks legitimately reports clicks=0 while cpm stays positive. 1,946 such
+        # rows exist in production, so pairing `clicks` with `cpm` in the predicate
+        # would hard-fail normal daily windows and block every load. `cpm` divides
+        # impressions, not clicks — keep it paired with `impressions` alone.
+        row = {
+            "impressions": "5000",
+            "clicks": "0",
+            "spend": "10",
+            "cpm": "2.0",
+            "ctr": "0",
+        }
+
+        self.assertEqual(degraded_report_rows([row]), [])
+
+    def test_zeroed_counts_alongside_positive_ratios_are_flagged(self):
+        row = {
+            "ad_id": "120245993092330720",
+            "date_start": "2026-10-13",
+            "spend": "0",
+            "impressions": "0",
+            "clicks": "0",
+            "ctr": "7.021132",
+            "cpc": "1.500291",
+            "cpm": "105.337423",
+        }
+
+        self.assertEqual(degraded_report_rows([row]), [row])
+
+    def test_genuine_no_delivery_row_is_not_flagged(self):
+        row = {
+            "ad_id": "ad-1",
+            "date_start": "2026-10-13",
+            "impressions": "0",
+            "clicks": "0",
+            "spend": "0",
+        }
+
+        self.assertEqual(degraded_report_rows([row]), [])
+
+    def test_healthy_row_is_not_flagged(self):
+        row = {
+            "impressions": "2085",
+            "clicks": "78",
+            "spend": "30.06",
+            "ctr": "3.741007",
+            "cpc": "0.385385",
+            "cpm": "14.417266",
+        }
+
+        self.assertEqual(degraded_report_rows([row]), [])
+
+    def test_unique_only_merged_row_without_counts_is_not_flagged(self):
+        row = {
+            "ad_id": "ad-1",
+            "date_start": "2026-10-13",
+            "reach": "1900",
+            "frequency": "1.097368",
+        }
+
+        self.assertEqual(degraded_report_rows([row]), [])
+
+    def test_empty_and_non_numeric_values_neither_flag_nor_raise(self):
+        row = {"impressions": "", "clicks": None, "ctr": "abc"}
+
+        self.assertEqual(degraded_report_rows([row]), [])
+
+    def test_absent_counts_alongside_positive_ratios_are_not_flagged(self):
+        # Only a count Meta actually reported as zero contradicts a ratio. If a
+        # caller ever requests the ratios without `impressions`/`clicks`, every
+        # row would otherwise look degraded and hard-fail the whole window.
+        for row in (
+            {"ctr": "7.021132", "cpc": "1.500291", "cpm": "105.337423"},
+            {"impressions": None, "clicks": None, "ctr": "7.021132"},
+            {"impressions": "", "clicks": "", "cpm": "105.337423"},
+        ):
+            with self.subTest(row=row):
+                self.assertEqual(degraded_report_rows([row]), [])
+
+    def test_zeroed_spend_alongside_a_positive_cost_ratio_is_flagged(self):
+        # spend is the column the incident destroyed, and it can be zeroed while
+        # the counts survive. Every per-cost ratio divides it.
+        row = {
+            "impressions": "2085",
+            "clicks": "78",
+            "spend": "0",
+            "ctr": "3.741007",
+            "cpm": "14.417266",
+        }
+
+        self.assertEqual(degraded_report_rows([row]), [row])
+
+    def test_sub_unit_spend_without_a_positive_cost_ratio_is_not_flagged(self):
+        # spend rounds to minor units, so it can legitimately render as "0".
+        # Meta derives the ratios from the same rounded value, so they read 0 too.
+        row = {"impressions": "5", "clicks": "0", "spend": "0", "cpm": "0", "ctr": "0"}
+
+        self.assertEqual(degraded_report_rows([row]), [])
+
+    def test_zeroed_unique_report_counts_are_flagged(self):
+        # reach/unique_clicks arrive from the separate unique-metrics job, which
+        # can be degraded independently of the core report.
+        zero_reach = {"reach": "0", "frequency": "1.097368", "cpp": "15.83"}
+        zero_unique_clicks = {"unique_clicks": "0", "unique_ctr": "3.1"}
+
+        self.assertEqual(degraded_report_rows([zero_reach]), [zero_reach])
+        self.assertEqual(
+            degraded_report_rows([zero_unique_clicks]), [zero_unique_clicks]
+        )
+
+    def test_unique_metrics_missing_is_only_reported_when_delivery_happened(self):
+        self.assertFalse(
+            unique_metrics_missing_despite_delivery([{"impressions": "0"}])
+        )
+        self.assertTrue(
+            unique_metrics_missing_despite_delivery(
+                [{"impressions": "2085", "clicks": "78"}]
+            )
+        )
+        self.assertFalse(
+            unique_metrics_missing_despite_delivery(
+                [{"impressions": "2085", "reach": "1900"}]
+            )
+        )
+
+
+class DegradedInsightsRetryTests(unittest.TestCase):
+    @staticmethod
+    def _row(ad_id, **metrics):
+        row = Mock()
+        row.export_all_data.return_value = {
+            "account_id": "act-1",
+            "campaign_id": "campaign-1",
+            "adset_id": "adset-1",
+            "ad_id": ad_id,
+            "date_start": "2026-08-01",
+            "date_stop": "2026-08-01",
+            **metrics,
+        }
+        return row
+
+    def _resource(self, attempts):
+        """Build the resource with one ``get_result`` payload per window attempt.
+
+        The default fields carry no unique metrics, so each window attempt makes
+        exactly one ``fetch_report`` call and consumes exactly one payload. The
+        patches stay open for the whole test so a raising case can be driven too.
+        """
+
+        account = Mock()
+        job = Mock()
+        job.get_result.side_effect = attempts
+        account.get_insights.return_value = job
+        resource_state = {}
+
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        stack.enter_context(
+            patch.object(facebook_ads_module, "get_ads_account", return_value=account)
+        )
+        stack.enter_context(
+            patch.object(facebook_ads_module, "execute_job", return_value=job)
+        )
+        stack.enter_context(
+            patch.object(
+                facebook_ads_module.dlt.current,
+                "resource_state",
+                return_value=resource_state,
+            )
+        )
+        stack.enter_context(patch.dict(facebook_ads_module.os.environ, {}, clear=True))
+
+        source = facebook_ads_module.facebook_insights_source(
+            account_id="act-1",
+            access_token="secret",
+            fields=("account_id", "date_start", "date_stop", "impressions"),
+            report_start_date="2026-08-01",
+            report_end_date="2026-08-01",
+        )
+        return source.resources["facebook_insights_act-1"], job, resource_state
+
+    DEGRADED = {
+        "spend": "0",
+        "impressions": "0",
+        "clicks": "0",
+        "ctr": "7.021132",
+        "cpc": "1.500291",
+        "cpm": "105.337423",
+    }
+    HEALTHY = {
+        "spend": "30.06",
+        "impressions": "2085",
+        "clicks": "78",
+        "ctr": "3.741007",
+        "cpc": "0.385385",
+        "cpm": "14.417266",
+    }
+
+    def test_clean_window_is_fetched_once(self):
+        # Cheap insurance against an edit that makes every window retry and
+        # silently doubles the Meta job cost of every run.
+        resource, job, resource_state = self._resource(
+            [[self._row("ad-1", **self.HEALTHY)]]
+        )
+
+        extracted = list(resource)
+
+        self.assertEqual(len(extracted), 1)
+        self.assertEqual(job.get_result.call_count, 1)
+        self.assertEqual(resource_state[INSIGHTS_WINDOW_CHECKPOINT], "2026-08-01")
+
+    def test_retry_returning_fewer_rows_is_not_accepted_as_a_recovery(self):
+        # An empty or shortened retry was never validated either, so it must not
+        # pass as a recovery and move the checkpoint past the window.
+        resource, job, resource_state = self._resource(
+            [[self._row("ad-1", **self.DEGRADED)], []]
+        )
+
+        with self.assertRaises(DegradedInsightsReport):
+            list(resource)
+
+        self.assertNotIn(INSIGHTS_WINDOW_CHECKPOINT, resource_state)
+
+    def test_window_degraded_once_is_refetched_and_the_retry_is_loaded(self):
+        resource, job, resource_state = self._resource(
+            [
+                [self._row("ad-1", **self.DEGRADED)],
+                [self._row("ad-1", **self.HEALTHY)],
+            ]
+        )
+
+        with self.assertLogs(level="WARNING") as logs:
+            extracted = list(resource)
+
+        self.assertEqual([row["impressions"] for row in extracted], ["2085"])
+        self.assertEqual(job.get_result.call_count, 2)
+        self.assertEqual(resource_state[INSIGHTS_WINDOW_CHECKPOINT], "2026-08-01")
+        self.assertIn("recovered on retry", "\n".join(logs.output))
+
+    def test_window_degraded_on_both_attempts_raises_before_the_checkpoint_moves(self):
+        resource, job, resource_state = self._resource(
+            [
+                [self._row("ad-1", **self.DEGRADED)],
+                [self._row("ad-1", **self.DEGRADED)],
+            ]
+        )
+
+        with self.assertRaises(DegradedInsightsReport):
+            list(resource)
+
+        self.assertEqual(job.get_result.call_count, 2)
+        self.assertNotIn(INSIGHTS_WINDOW_CHECKPOINT, resource_state)
 
 
 if __name__ == "__main__":
