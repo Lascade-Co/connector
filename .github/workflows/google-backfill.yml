@@ -1,0 +1,71 @@
+name: Google Ads Backfill
+run-name: Google Ads backfill | ${{ inputs.account_id }} | ${{ inputs.group }} | ${{ inputs.start_date }} to ${{ inputs.end_date }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      account_id:
+        description: "Account ID / all"
+        type: string
+        required: true
+        default: "all"
+      group:
+        description: "Group / all"
+        type: choice
+        required: true
+        default: "d1"
+        options:
+          - all
+          - d1
+      start_date:
+        description: "Start date (YYYY-MM-DD, inclusive)"
+        type: string
+        required: true
+      end_date:
+        description: "End date (YYYY-MM-DD, inclusive)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    # All Google writers share destination and staging tables, even across groups.
+    concurrency:
+      group: google-ads-travel
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Setup Google Ads secrets
+        env:
+          DLT_SECRETS: ${{ secrets.SECRETS }}
+          GOOGLE_GROUPS: ${{ secrets.GOOGLE_GROUPS }}
+        run: |
+          umask 077
+          mkdir -p secrets .dlt
+          printf '%s' "$DLT_SECRETS" | base64 --decode > .dlt/secrets.toml
+          printf '%s' "$GOOGLE_GROUPS" | base64 --decode > secrets/google.json
+
+      - name: Backfill selected Google Ads accounts
+        env:
+          GOOGLE_BACKFILL_ACCOUNT_ID: ${{ inputs.account_id }}
+          GOOGLE_BACKFILL_GROUP: ${{ inputs.group }}
+          GOOGLE_BACKFILL_START_DATE: ${{ inputs.start_date }}
+          GOOGLE_BACKFILL_END_DATE: ${{ inputs.end_date }}
+          PIPELINE_NAME_SUFFIX: _backfill_${{ github.run_id }}_${{ github.run_attempt }}
+        run: python -m pipelines.google.backfill

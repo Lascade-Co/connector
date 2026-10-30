@@ -129,6 +129,7 @@ Not every Facebook account bills in AED, but Metabase compares them as if they d
 - **`tests.yml` runs `python -m unittest discover -s tests -t .`** on push to `main`, PRs, and manual dispatch. The repo previously had no test workflow at all, so `tests/` only ran by hand. Test modules import `dlt`/`facebook_business` at module scope, so the job installs the full `requirements.txt` — a partial install surfaces as collection errors, not failures.
 
 ## GitHub Actions Workflows
+- `google-backfill.yml` runs explicit inclusive date ranges for one account or all accounts/groups. Keep it metric-only: shared `replace` resources must not run for an account subset. Google writers share concurrency group `google-ads-travel`; keep dropdown group options aligned with `GOOGLE_GROUPS`.
 - `.github/workflows/_reusable-etl.yml` — Shared job template all pipelines use
 - Daily schedules (UTC): Facebook batches A/B/C 0:00/1:00/2:00 (5:30/6:30/7:30 IST), Subscription Google 2:50 (8:20 IST), Google Ads 3:00 (8:30 IST), Subscription Facebook 3:00 (8:30 IST), GA4 4:30, Google Play 5:10, App Store 6:10, eSIM Facebook 8:30
 - Hourly: eSIM Analytics API every hour at :15

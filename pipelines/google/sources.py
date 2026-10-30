@@ -1,4 +1,3 @@
-import datetime
 import os
 from typing import Iterator
 
@@ -7,6 +6,7 @@ from dlt.common.typing import TDataItem
 from google.ads.googleads.client import GoogleAdsClient
 
 from pipelines.google.queries import AD_METRICS_QUERY, CAMPAIGN_QUERY, CONVERSION_ACTION_QUERY, run_query
+from pipelines.google.date_range import reporting_dates
 
 ROLLING_DAYS = 30
 
@@ -32,10 +32,10 @@ def get_days_back() -> int:
 def ads_metrics(
         client: GoogleAdsClient,
         customer_id: str,
-        group_name: str, days_back: int = ROLLING_DAYS
+        group_name: str, days_back: int = ROLLING_DAYS,
+        *, start_date: str = None, end_date: str = None,
 ) -> Iterator[TDataItem]:
-    end = datetime.date.today()
-    start = end - datetime.timedelta(days=days_back)
+    start, end = reporting_dates(days_back, start_date=start_date, end_date=end_date)
     query = AD_METRICS_QUERY.format(start=start, end=end)
 
     for r in run_query(client, customer_id, query):
@@ -114,13 +114,13 @@ def campaign_budgets(
 def conversion_actions(
         client: GoogleAdsClient,
         customer_id: str,
-        group_name: str, days_back: int = ROLLING_DAYS
+        group_name: str, days_back: int = ROLLING_DAYS,
+        *, start_date: str = None, end_date: str = None,
 ) -> Iterator[TDataItem]:
     """
     Fetches conversion metrics broken down by conversion action (e.g., dpl, purchase_web, etc.)
     """
-    end = datetime.date.today()
-    start = end - datetime.timedelta(days=days_back)
+    start, end = reporting_dates(days_back, start_date=start_date, end_date=end_date)
     query = CONVERSION_ACTION_QUERY.format(start=start, end=end)
 
     for r in run_query(client, customer_id, query):

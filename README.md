@@ -160,8 +160,26 @@ GitHub Actions automatically run the ETL pipelines:
 Workflows can also be triggered manually from the GitHub Actions tab.
 
 ### Manual Backfill Workflows
-- **GA4 Backfill**: `.github/workflows/ga4-backfill.yml` - Pull historical GA4 data
-- **Google Ads Backfill**: `.github/workflows/google-backfill.yml` - Pull historical ads data
+
+For Google Ads, open **Actions → Google Ads Backfill → Run workflow**:
+
+- **Account ID / all**: enter one configured Google Ads account ID or `all`.
+- **Group / all**: select a group, or `all` to read every configured Google group.
+  A specific account with group `all` runs only its matching configured group.
+  Selecting `all` for both fields backfills every configured Google account.
+  Individual group choices must exist in `GOOGLE_GROUPS`.
+- **Start date** and **End date**: enter inclusive dates as `YYYY-MM-DD`.
+  GitHub Actions has no native calendar picker for workflow inputs.
+
+For example, select account `2749505452`, group `d1`, start `2026-09-01`,
+and end `2026-10-30`. Dates follow each Google Ads account's reporting timezone;
+today's results are provisional. The backfill merges ad metrics and conversion
+actions into their existing tables. It does not refresh shared campaign budgets
+or account-directory tables. Google backfills and daily Google loads run one at a
+time to protect their shared staging tables.
+
+The **Unified Manual Backfill** workflow (`.github/workflows/backfill.yml`)
+continues to provide group and day-count backfills for the other pipelines.
 
 ## 📁 Project Structure
 
@@ -170,6 +188,7 @@ connector/
 ├── .github/workflows/          # GitHub Actions workflows
 │   ├── _reusable-etl.yml      # Shared job template
 │   ├── backfill.yml           # Manual backfill entry point
+│   ├── google-backfill.yml    # Google account/group and inclusive-date backfills
 │   ├── daily-facebook.yml     # Facebook Ads ETL schedule
 │   ├── daily-ga4.yml          # GA4 ETL schedule
 │   ├── daily-google-ads.yml   # Google Ads ETL schedule

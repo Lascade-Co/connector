@@ -30,6 +30,12 @@ on:
 jobs:
   etl:
     runs-on: ubuntu-latest
+    concurrency:
+      # Google daily and manual jobs share merge staging tables. Other pipelines
+      # retain independent jobs, including matrix jobs in the same workflow run.
+      group: ${{ inputs.pipeline == 'google' && 'google-ads-travel' || format('etl-{0}-{1}-{2}-{3}', inputs.pipeline, inputs.group, github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
 
     steps:
       - name: Checkout repository
