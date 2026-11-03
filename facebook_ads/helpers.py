@@ -91,27 +91,27 @@ def _first_numeric(value: Any) -> Optional[float]:
 
 
 _TRIAL_EVENT_ALIASES = {
-    "omni": ("omni_start_trial",),
+    "omni": ("omni_start_trial", "start_trial_total"),
     "components": (
         (
             "start_trial_mobile_app",
             "app_custom_event.fb_mobile_start_trial",
             "fb_mobile_start_trial",
         ),
-        ("offsite_conversion.fb_pixel_start_trial",),
+        ("offsite_conversion.fb_pixel_start_trial", "start_trial_website"),
     ),
     "fallback": ("start_trial",),
 }
 
 _SUBSCRIPTION_EVENT_ALIASES = {
-    "omni": ("omni_subscribe",),
+    "omni": ("omni_subscribe", "subscribe_total"),
     "components": (
         (
             "subscribe_mobile_app",
             "app_custom_event.fb_mobile_subscribe",
             "fb_mobile_subscribe",
         ),
-        ("offsite_conversion.fb_pixel_subscribe",),
+        ("offsite_conversion.fb_pixel_subscribe", "subscribe_website"),
     ),
     "fallback": ("subscribe",),
 }
@@ -142,7 +142,7 @@ def _event_metric(
     field_names: Sequence[str],
     aliases: dict[str, tuple],
 ) -> float:
-    """Prefer Meta's omni rollup; otherwise combine one web and one app value."""
+    """Prefer Meta's rollup (omni_* or *_total); else one web plus one app value."""
 
     values = _action_values_by_type(item, field_names)
     for action_type in aliases["omni"]:

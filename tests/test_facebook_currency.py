@@ -520,8 +520,8 @@ class InsightsConversionTests(unittest.TestCase):
                 self.assertEqual(entry["7d_click"], "2")
 
     def test_subscribe_total_is_not_double_counted_with_its_app_component(self):
-        # subscribe_total is Meta's rollup of subscribe_mobile_app, not a
-        # second event, so summing both would double the subscription value.
+        # subscribe_total is Meta's rollup of the web and app parts (here app
+        # only), not a second event, so summing both would double the value.
         row = self.subscribe_row()
 
         flatten_facebook_insights(convert_insights_row(row, self.provider))
