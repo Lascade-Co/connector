@@ -13,6 +13,7 @@ from dlt.pipeline.exceptions import PipelineStepFailed
 from facebook_ads.exceptions import DegradedInsightsReport
 from facebook_ads.insights import plan_insights_date_windows
 from pipelines.facebook.creative_status import (
+    INSIGHTS_COUNTRY_RESOURCE,
     INSIGHTS_RESOURCE,
     account_has_quota_parking,
     format_partial_resources,
@@ -91,6 +92,13 @@ def raise_for_partial_resources(pipeline_label: str) -> None:
         if INSIGHTS_RESOURCE in partial
         else ""
     )
+    # The travel country feed parks on any failure, including a failed load
+    # step whose pending package a later account's run may still commit.
+    if INSIGHTS_COUNTRY_RESOURCE in partial:
+        degraded_note += (
+            " `insights_country` parks on any failure; its rows may or may not "
+            "have committed, and the 7-day reload repairs either way."
+        )
     raise RuntimeError(
         f"{pipeline_label} resources were only partially loaded "
         f"({format_partial_resources()}). Valid rows and checkpoints were committed; "
@@ -99,8 +107,10 @@ def raise_for_partial_resources(pipeline_label: str) -> None:
     )
 
 
-def initial_load_days(backfill_env_name: str) -> int:
-    return positive_int_env(backfill_env_name, DEFAULT_INITIAL_LOAD_DAYS)
+def initial_load_days(
+    backfill_env_name: str, default: int = DEFAULT_INITIAL_LOAD_DAYS
+) -> int:
+    return positive_int_env(backfill_env_name, default)
 
 
 def run_insights_in_windows(
@@ -110,6 +120,7 @@ def run_insights_in_windows(
     group_name: str,
     *,
     backfill_env_name: str,
+    default_initial_days: int = DEFAULT_INITIAL_LOAD_DAYS,
 ) -> None:
     """Load each planned Insights window as its own durable dlt package."""
 
@@ -122,7 +133,9 @@ def run_insights_in_windows(
     windows = plan_insights_date_windows(
         pipeline_state,
         account_id,
-        initial_load_past_days=initial_load_days(backfill_env_name),
+        initial_load_past_days=initial_load_days(
+            backfill_env_name, default_initial_days
+        ),
         attribution_window_days_lag=DEFAULT_ATTRIBUTION_LAG_DAYS,
         max_days=positive_int_env(
             "FB_INSIGHTS_LOAD_WINDOW_DAYS", DEFAULT_LOAD_WINDOW_DAYS
@@ -179,6 +192,8 @@ def run_insights_isolated(
     group_name: str,
     *,
     backfill_env_name: str,
+    default_initial_days: int = DEFAULT_INITIAL_LOAD_DAYS,
+    resource_name: str = INSIGHTS_RESOURCE,
 ) -> None:
     """Load one account's Insights, parking it if Meta served a degraded report.
 
@@ -194,6 +209,7 @@ def run_insights_isolated(
             creds,
             group_name,
             backfill_env_name=backfill_env_name,
+            default_initial_days=default_initial_days,
         )
     except (PipelineStepFailed, DegradedInsightsReport) as exc:
         degraded = find_degraded_cause(exc)
@@ -209,4 +225,4 @@ def run_insights_isolated(
         )
         # The mark feeds the end-of-run report only; `account_has_quota_parking`
         # deliberately ignores it, since this is not a throttling signal.
-        mark_partial_resource(INSIGHTS_RESOURCE, account_id)
+        mark_partial_resource(resource_name, account_id)

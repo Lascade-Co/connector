@@ -197,7 +197,7 @@ def facebook_insights_source(
         fields (Sequence[str], optional): A list of fields to include in each report. Note that `breakdowns` option adds fields automatically. Defaults to DEFAULT_INSIGHT_FIELDS.
         attribution_window_days_lag (int, optional): Attribution window in days. The reports in attribution window are refreshed on each run. Defaults to 7.
         time_increment_days (int, optional): The report aggregation window in days. use 7 for weekly aggregation. Defaults to 1.
-        breakdowns (TInsightsBreakdownOptions, optional): A presents with common aggregations. See settings.py for details. Defaults to "ads_insights_age_and_gender".
+        breakdowns (TInsightsBreakdownOptions, optional): A presents with common aggregations. See settings.py for details. Defaults to "ads_insights" (no breakdown). A breakdown's columns join the row identity.
         action_breakdowns (Sequence[str], optional): Action aggregation types. See settings.py for details. Defaults to ALL_ACTION_BREAKDOWNS.
         level (TInsightsLevels, optional): The granularity level. Defaults to "ad".
         action_attribution_windows (Sequence[str], optional): Attribution windows for actions. Defaults to ALL_ACTION_ATTRIBUTION_WINDOWS.
@@ -235,6 +235,7 @@ def facebook_insights_source(
         raise ValueError(
             "report_start_date and report_end_date must either both be set or both be omitted"
         )
+    breakdown_fields = tuple(INSIGHTS_BREAKDOWNS_OPTIONS[breakdowns]["breakdowns"])
 
     # we load with a defined lag
     initial_load_start_date = pendulum.today().subtract(days=initial_load_past_days)
@@ -242,7 +243,7 @@ def facebook_insights_source(
 
     @dlt.resource(
         name=f"facebook_insights_{account_id}",
-        primary_key=INSIGHTS_PRIMARY_KEY,
+        primary_key=INSIGHTS_PRIMARY_KEY + breakdown_fields,
         write_disposition="merge",
         columns=INSIGHT_FIELDS_TYPES,
     )
@@ -283,9 +284,6 @@ def facebook_insights_source(
             query = {
                 "level": level,
                 # "action_breakdowns": list(action_breakdowns),
-                # "breakdowns": list(
-                #     INSIGHTS_BREAKDOWNS_OPTIONS[breakdowns]["breakdowns"]
-                # ),
                 "limit": batch_size,
                 "fields": list(report_fields),
                 "time_increment": time_increment_days,
@@ -294,6 +292,9 @@ def facebook_insights_source(
                     "until": report_end.to_date_string(),
                 },
             }
+            # The default preset has none, so existing feeds send the same request.
+            if breakdown_fields:
+                query["breakdowns"] = list(breakdown_fields)
             if _ACTION_INSIGHT_FIELDS.intersection(report_fields):
                 query["action_attribution_windows"] = list(action_attribution_windows)
             try:
@@ -341,7 +342,7 @@ def facebook_insights_source(
                 report_groups.append(
                     fetch_report(unique_fields, window_start, window_end)
                 )
-            return merge_report_rows(report_groups)
+            return merge_report_rows(report_groups, breakdown_fields)
 
         for window_start, window_end in windows:
             rows = fetch_window(window_start, window_end)

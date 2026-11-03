@@ -16,8 +16,13 @@ from pipelines.facebook.sources import (
     all_sources,
     campaigns_all,
     fx_daily_rates,
+    insights_country,
 )
-from pipelines.facebook.creative_status import reset_partial_resources
+from pipelines.facebook.creative_status import (
+    INSIGHTS_COUNTRY_RESOURCE,
+    mark_partial_resource,
+    reset_partial_resources,
+)
 from pipelines.facebook.runner import (
     clickhouse_destination,
     raise_for_partial_resources,
@@ -32,6 +37,10 @@ _SMOKE_DATASET = re.compile(r"fb_smoke_[a-z0-9_]{1,32}")
 
 # Only these current-state resources carry money (budgets and bids).
 BUDGET_BEARING_SOURCES = (campaigns_all, adsets_all)
+
+# Covers the 91-day window of dashboard 73's helper question 1001, so the first
+# run fills it without a manual backfill.
+COUNTRY_INITIAL_LOAD_DAYS = 92
 
 
 def resolve_dataset_name() -> str:
@@ -74,12 +83,22 @@ def run():
     logging.info(f"Pulling accounts: {', '.join(accounts)}")
 
     suffix = os.getenv("PIPELINE_NAME_SUFFIX", "")
+    dataset_name = resolve_dataset_name()
     pipeline = dlt.pipeline(
         pipeline_name=f"fb_ads_{group_name}{suffix}",  # <- each group has its *own* state dir
         destination=clickhouse_destination(),
-        dataset_name=resolve_dataset_name(),
+        dataset_name=dataset_name,
     )
     pipeline.sync_destination()
+    # Separate pipeline = separate dlt state: the Insights window checkpoint is
+    # keyed on facebook_insights_{account_id} and would otherwise be shared
+    # with the main feed.
+    country_pipeline = dlt.pipeline(
+        pipeline_name=f"fb_ads_country_{group_name}{suffix}",
+        destination=clickhouse_destination(),
+        dataset_name=dataset_name,
+    )
+    country_pipeline.sync_destination()
 
     delay_env = os.getenv("FB_ACCOUNT_DELAY_SECONDS", "0")
     try:
@@ -98,6 +117,9 @@ def run():
     insights_source, *structural_sources = all_sources
     insights_resource = functools.partial(
         insights_source, pre_flatten=insights_currency_map(rates)
+    )
+    country_resource = functools.partial(
+        insights_country, pre_flatten=insights_currency_map(rates)
     )
     structural_resources = [
         (
@@ -129,6 +151,33 @@ def run():
                 delay_seconds,
             )
             time.sleep(delay_seconds)
+
+    # Runs after every account's main Insights and current state are committed,
+    # so a country failure cannot stop them. Any failure parks only that
+    # account's country feed: the remaining accounts still load, the FX audit
+    # (which also covers dates only this feed resolved) is still written, and
+    # main-feed parking is still reported by raise_for_partial_resources.
+    if os.getenv("FB_BACKFILL_DAYS"):
+        logging.info("Insights backfill mode: skipping delivered-country Insights")
+    else:
+        for account_id in accounts:
+            try:
+                run_insights_isolated(
+                    country_pipeline,
+                    country_resource,
+                    [{"account_id": account_id, "token": group["token"]}],
+                    group_name,
+                    backfill_env_name="FB_BACKFILL_DAYS",
+                    default_initial_days=COUNTRY_INITIAL_LOAD_DAYS,
+                    resource_name=INSIGHTS_COUNTRY_RESOURCE,
+                )
+            except Exception:
+                logging.exception(
+                    "Facebook account %s: delivered-country Insights failed; "
+                    "parking it for this run",
+                    account_id,
+                )
+                mark_partial_resource(INSIGHTS_COUNTRY_RESOURCE, account_id)
 
     _record_fx_rates(pipeline, rates)
     raise_for_partial_resources("Facebook")

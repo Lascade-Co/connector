@@ -12,6 +12,26 @@ INSIGHT_FIELDS = DEFAULT_INSIGHT_FIELDS + (
     "conversion_values",
 )
 
+# Delivered-country Insights. ``ctr`` only, no ``cpc``/``cpm``/``cpp``: the
+# degraded-report guard pairs those with ``spend``, and a small per-country
+# slice can round spend to "0" beside a positive cpm, refusing normal windows.
+# ``ctr`` is exact on integer counts and keeps the impressions/clicks sentinels.
+COUNTRY_INSIGHT_FIELDS = (
+    "account_id",
+    "account_name",
+    "account_currency",
+    "campaign_id",
+    "campaign_name",
+    "date_start",
+    "date_stop",
+    "spend",
+    "impressions",
+    "clicks",
+    "ctr",
+    "actions",
+    "action_values",
+)
+
 
 def ads_src(cred):  # structure data
     return facebook_ads_source(
@@ -43,4 +63,18 @@ def insights_src(
         report_end_date=report_end_date,
         pre_flatten=pre_flatten,
         **kwargs,
+    )
+
+
+def country_insights_src(cred, *, report_start_date, report_end_date, pre_flatten):
+    return facebook_insights_source(
+        account_id=cred["account_id"],
+        access_token=cred["token"],
+        attribution_window_days_lag=7,
+        fields=COUNTRY_INSIGHT_FIELDS,
+        level="campaign",
+        breakdowns="ads_insights_country",
+        report_start_date=report_start_date,
+        report_end_date=report_end_date,
+        pre_flatten=pre_flatten,
     )

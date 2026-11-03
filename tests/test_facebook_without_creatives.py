@@ -34,6 +34,9 @@ class FacebookWithoutCreativesTests(unittest.TestCase):
         }
 
         def load_insights(destination, resource, creds, group, **kwargs):
+            if kwargs.get("resource_name") == "insights_country":
+                # The delivered-country feed; covered by its own tests.
+                return
             self.assertEqual(kwargs, {"backfill_env_name": "FB_BACKFILL_DAYS"})
             loaded["insights"] = exhaust_resource(resource, creds, group, **bounds)
 
@@ -88,8 +91,9 @@ class FacebookWithoutCreativesTests(unittest.TestCase):
         ):
             pipeline.run()
 
-        destination.return_value.sync_destination.assert_called_once_with()
-        insights.assert_called_once()
+        # Main and delivered-country pipelines.
+        self.assertEqual(destination.return_value.sync_destination.call_count, 2)
+        self.assertEqual(insights.call_count, 2)
         self.assertEqual(ads.call_count, 3)
         self.assertEqual(set(loaded), {"insights", "ads", "campaigns", "ad_sets"})
         self.assertEqual(loaded["insights"], [{

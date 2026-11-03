@@ -10,11 +10,12 @@ from collections import defaultdict
 
 
 INSIGHTS_RESOURCE = "insights"
+INSIGHTS_COUNTRY_RESOURCE = "insights_country"
 
 # Marks that are not quota signals. `account_has_quota_parking` must ignore
 # every one of these, or it will again stop an account's remaining current-state
 # resources for a fault that has nothing to do with quota.
-NON_QUOTA_RESOURCES = frozenset({INSIGHTS_RESOURCE})
+NON_QUOTA_RESOURCES = frozenset({INSIGHTS_RESOURCE, INSIGHTS_COUNTRY_RESOURCE})
 
 _partial_resources: dict[str, set[str]] = defaultdict(set)
 

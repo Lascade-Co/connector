@@ -121,19 +121,28 @@ def plan_insights_date_windows(
     return list(iter_date_windows(start_date, end_date, max(1, max_days)))
 
 
-def report_row_key(item: DictStrAny) -> tuple[Any, ...]:
-    return tuple(item[field] for field in INSIGHTS_PRIMARY_KEY)
+def report_row_key(
+    item: DictStrAny, breakdown_fields: Sequence[str] = ()
+) -> tuple[Any, ...]:
+    return tuple(item[field] for field in INSIGHTS_PRIMARY_KEY) + tuple(
+        item.get(field) for field in breakdown_fields
+    )
 
 
 def merge_report_rows(
     report_groups: Iterable[Iterable[DictStrAny]],
+    breakdown_fields: Sequence[str] = (),
 ) -> list[DictStrAny]:
-    """Outer-union core and unique report rows using the full destination key."""
+    """Outer-union core and unique report rows using the full destination key.
+
+    Breakdown dimensions are part of row identity: without them every country
+    (or other breakdown value) of one ad-day collapses into a single row.
+    """
 
     merged: dict[tuple[Any, ...], DictStrAny] = {}
     for group in report_groups:
         for item in group:
-            key = report_row_key(item)
+            key = report_row_key(item, breakdown_fields)
             merged.setdefault(key, {}).update(item)
     return list(merged.values())
 

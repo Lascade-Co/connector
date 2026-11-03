@@ -54,12 +54,28 @@ def _chained(error):
         return wrapped
 
 
+def main_insights_calls(run_insights):
+    """Calls for the main Insights feed, excluding travel's country feed."""
+
+    return [
+        c
+        for c in run_insights.call_args_list
+        if c.kwargs.get("resource_name", INSIGHTS_RESOURCE) == INSIGHTS_RESOURCE
+    ]
+
+
 class FacebookRunnerOrderTests(unittest.TestCase):
     def assert_ran_insights(self, run_insights, insights, group_name, backfill_env):
-        """The travel runner binds its currency map onto the insights resource."""
+        """The travel runner binds its currency map onto the insights resource.
 
-        self.assertEqual(run_insights.call_count, 1)
-        pipeline_arg, insights_arg, creds_arg, group_arg = run_insights.call_args.args
+        Travel also runs a delivered-country feed through the same function;
+        those calls carry ``resource_name`` and are covered in
+        ``test_facebook_country_insights``.
+        """
+
+        main_calls = main_insights_calls(run_insights)
+        self.assertEqual(len(main_calls), 1)
+        pipeline_arg, insights_arg, creds_arg, group_arg = main_calls[0].args
         delegate = (
             insights_arg.func
             if isinstance(insights_arg, functools.partial)
@@ -68,9 +84,7 @@ class FacebookRunnerOrderTests(unittest.TestCase):
         self.assertIs(delegate, insights)
         self.assertEqual(creds_arg, [{"account_id": "act-1", "token": "secret"}])
         self.assertEqual(group_arg, group_name)
-        self.assertEqual(
-            run_insights.call_args.kwargs, {"backfill_env_name": backfill_env}
-        )
+        self.assertEqual(main_calls[0].kwargs, {"backfill_env_name": backfill_env})
         return pipeline_arg
 
     def test_all_facebook_runners_commit_insights_before_structural_resources(self):
@@ -110,7 +124,11 @@ class FacebookRunnerOrderTests(unittest.TestCase):
                     module.run()
 
                 get_for_group.assert_called_once_with("any-group", platform)
-                pipeline_factory.return_value.sync_destination.assert_called_once_with()
+                # Travel syncs its main and its delivered-country pipeline.
+                self.assertEqual(
+                    pipeline_factory.return_value.sync_destination.call_args_list,
+                    [call()] * (2 if module is facebook_ads_pipeline else 1),
+                )
                 pipeline_arg = self.assert_ran_insights(
                     run_insights,
                     insights,
@@ -299,6 +317,7 @@ class RunInsightsIsolatedTests(unittest.TestCase):
             self.CREDS,
             "d1c",
             backfill_env_name="FB_BACKFILL_DAYS",
+            default_initial_days=runner.DEFAULT_INITIAL_LOAD_DAYS,
         )
 
 
@@ -357,6 +376,8 @@ class FacebookAccountIsolationTests(unittest.TestCase):
         def run_insights(_pipeline, _resource, creds, _group_name, **_kwargs):
             # Mirrors `run_insights_isolated`: park in the registry, return
             # nothing. A parked account's current-state load is unaffected.
+            if "resource_name" in _kwargs:
+                return  # travel's country feed; covered in its own tests
             account_id = creds[0]["account_id"]
             if account_id == "act-parked":
                 mark_partial_resource(INSIGHTS_RESOURCE, account_id)
@@ -383,7 +404,7 @@ class FacebookAccountIsolationTests(unittest.TestCase):
                 module.run()
 
         self.assertEqual(
-            [call_.args[2] for call_ in run_insights_mock.call_args_list],
+            [call_.args[2] for call_ in main_insights_calls(run_insights_mock)],
             [
                 [{"account_id": "act-parked", "token": "secret"}],
                 [{"account_id": "act-ok", "token": "secret"}],
