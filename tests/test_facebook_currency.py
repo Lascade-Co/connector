@@ -296,6 +296,20 @@ class CurrencyFieldRequestTests(unittest.TestCase):
         self.assertNotIn("account_currency", core)
         self.assertNotIn("account_currency", unique)
 
+    def test_travel_requests_conversions_in_the_core_report_only(self):
+        # Meta reports the Subscribe event only in these two arrays.
+        core, unique = split_insight_fields(list(INSIGHT_FIELDS))
+
+        for field in ("conversions", "conversion_values"):
+            with self.subTest(field):
+                self.assertIn(field, core)
+                self.assertNotIn(field, unique)
+
+    def test_default_fields_do_not_request_conversions(self):
+        for field in ("conversions", "conversion_values"):
+            with self.subTest(field):
+                self.assertNotIn(field, DEFAULT_INSIGHT_FIELDS)
+
 
 class DltMapCompatibilityTests(unittest.TestCase):
     """The map has to survive dlt's signature inspection, not just a direct call.
@@ -469,6 +483,53 @@ class InsightsConversionTests(unittest.TestCase):
         cpa = row["cost_per_action_type"][0]
         self.assertEqual(cpa["value"], self.expected("2.50"))
         self.assertEqual(cpa["7d_click"], self.expected("2.50"))
+
+    def subscribe_row(self):
+        return self.gbp_row(
+            conversion_values=[
+                {
+                    "action_type": "subscribe_total",
+                    "value": "11.00",
+                    "7d_click": "11.00",
+                },
+                {
+                    "action_type": "subscribe_mobile_app",
+                    "value": "11.00",
+                    "7d_click": "11.00",
+                },
+            ],
+            conversions=[
+                {"action_type": "subscribe_total", "value": "2", "7d_click": "2"},
+                {"action_type": "subscribe_mobile_app", "value": "2", "7d_click": "2"},
+            ],
+        )
+
+    def test_converts_conversion_values_but_not_conversion_counts(self):
+        row = self.subscribe_row()
+
+        convert_insights_row(row, self.provider)
+
+        for entry in row["conversion_values"]:
+            with self.subTest(entry["action_type"]):
+                self.assertEqual(entry["value"], self.expected("11.00"))
+                self.assertEqual(entry["7d_click"], self.expected("11.00"))
+                self.assertEqual(entry["value_source"], "11.00")
+        for entry in row["conversions"]:
+            with self.subTest(entry["action_type"]):
+                self.assertEqual(entry["value"], "2")
+                self.assertEqual(entry["7d_click"], "2")
+
+    def test_subscribe_total_is_not_double_counted_with_its_app_component(self):
+        # subscribe_total is Meta's rollup of subscribe_mobile_app, not a
+        # second event, so summing both would double the subscription value.
+        row = self.subscribe_row()
+
+        flatten_facebook_insights(convert_insights_row(row, self.provider))
+
+        self.assertAlmostEqual(
+            row["subscription_value"], float(self.expected("11.00")), 6
+        )
+        self.assertEqual(row["subscriptions"], 2.0)
 
     def test_converts_every_entry_when_an_action_type_repeats(self):
         row = self.gbp_row(

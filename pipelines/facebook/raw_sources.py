@@ -3,9 +3,14 @@ from facebook_ads.settings import DEFAULT_INSIGHT_FIELDS
 import os
 
 # Meta reports the account's own billing currency per row, which is what the
-# AED normalization keys off. Scoped to this pipeline so the esim and
-# subscription datasets keep their current columns.
-INSIGHT_FIELDS = DEFAULT_INSIGHT_FIELDS + ("account_currency",)
+# AED normalization keys off. Meta reports the Subscribe event (count and
+# value) only in conversions/conversion_values, never in actions. Scoped to
+# this pipeline so the esim and subscription datasets keep their current columns.
+INSIGHT_FIELDS = DEFAULT_INSIGHT_FIELDS + (
+    "account_currency",
+    "conversions",
+    "conversion_values",
+)
 
 
 def ads_src(cred):  # structure data
