@@ -33,6 +33,27 @@ AD_METRICS_QUERY = """
                    WHERE segments.date BETWEEN '{start}' AND '{end}' \
                    """
 
+CAMPAIGN_METRICS_QUERY = """
+                   SELECT
+                       segments.date,
+                       customer.id,
+                       customer.descriptive_name,
+                       customer.currency_code,
+                       customer.time_zone,
+                       campaign.id,
+                       campaign.name,
+                       campaign.advertising_channel_type,
+                       metrics.cost_micros,
+                       metrics.impressions,
+                       metrics.clicks,
+                       metrics.conversions,
+                       metrics.conversions_value,
+                       metrics.conversions_by_conversion_date,
+                       metrics.conversions_value_by_conversion_date
+                   FROM campaign
+                   WHERE segments.date BETWEEN '{start}' AND '{end}' \
+                   """
+
 CAMPAIGN_QUERY = """
                    SELECT
                        campaign.id,
@@ -65,6 +86,18 @@ CONVERSION_ACTION_QUERY = """
                    FROM ad_group_ad
                    WHERE segments.date BETWEEN '{start}' AND '{end}'
                    AND segments.conversion_action_name != 'All conversions' \
+                   """
+
+CUSTOMER_CLIENT_QUERY = """
+                   SELECT
+                       customer_client.id,
+                       customer_client.descriptive_name,
+                       customer_client.currency_code,
+                       customer_client.time_zone,
+                       customer_client.manager,
+                       customer_client.status,
+                       customer_client.level
+                   FROM customer_client
                    """
 
 

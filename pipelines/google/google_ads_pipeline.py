@@ -7,8 +7,11 @@ import sys
 from dlt.sources.credentials import GcpOAuthCredentials
 
 from google_ads import get_client
-from pipelines.google.sources import all_sources, get_days_back
+from pipelines.google.sources import all_sources, customer_clients, get_days_back
 from utils import get_for_group
+
+# Sources whose query carries no date range, so they take no days_back argument
+SOURCES_WITHOUT_DATE_RANGE = {"campaign_budgets"}
 
 
 def run():
@@ -47,11 +50,10 @@ def run():
         destination="clickhouse",
         dataset_name="google",
     )
-    sources = []
+    sources = [customer_clients(client=client, mcc_id=group["login_customer_id"], group_name=group_name)]
     for customer_id in accounts:
         for source_func in all_sources:
-            # campaign_budgets doesn't support date range, so we don't pass days_back to it
-            if source_func.__name__ == "campaign_budgets":
+            if source_func.__name__ in SOURCES_WITHOUT_DATE_RANGE:
                 sources.append(source_func(client=client, customer_id=customer_id, group_name=group_name))
             else:
                 sources.append(source_func(client=client, customer_id=customer_id, group_name=group_name, days_back=days_back))
