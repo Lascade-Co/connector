@@ -24,6 +24,16 @@ on:
         description: "Days to backfill (e.g., 120)"
         type: string
         required: true
+      insights_load_window_days:
+        description: "Facebook only: Insights window size in days (optional, default 8; raise to 20-30 for long backfills)"
+        type: string
+        required: false
+        default: ""
+      dataset_name_override:
+        description: "Facebook only: dataset override for an isolated smoke run (fb or fb_smoke_<name>). Creates new tables — apply the enable_vertical_merge_algorithm/non_replicated_deduplication_window ALTERs after the first load, see CLAUDE.md"
+        type: string
+        required: false
+        default: ""
 
 jobs:
   # Parse groups into a JSON array for the backfill matrix
@@ -39,6 +49,9 @@ jobs:
         env:
           INPUT_GROUPS: ${{ inputs.groups }}
           INPUT_DAYS: ${{ inputs.days }}
+          INPUT_WINDOW_DAYS: ${{ inputs.insights_load_window_days }}
+          INPUT_DATASET: ${{ inputs.dataset_name_override }}
+          INPUT_PIPELINE: ${{ inputs.pipeline }}
         run: |
           # NOT named GROUPS: that is a bash special variable (the caller's group
           # IDs) and bash silently ignores assignments to it, which is the bug
@@ -66,6 +79,66 @@ jobs:
               ;;
           esac
 
+          # Optional, so empty passes. Validated here because the pipeline reads
+          # it with positive_int_env, which warns and silently falls back to 8 —
+          # a typo would otherwise run the full 23-window backfill it was raised
+          # to avoid, and only the log would say so.
+          if [ -n "$INPUT_WINDOW_DAYS" ]; then
+            # Digits only, at most 3 of them, and not all zeros. Glob patterns
+            # rather than `[ -eq 0 ]`: on a digit string too large for an
+            # integer, `test` returns 2 with a stderr error, which the `if`
+            # reads as "condition false" and lets through. The 3-digit cap also
+            # keeps the -gt below inside `test`'s range. Note `0*` would be
+            # wrong here — case patterns are globs, not regexes, so it would
+            # also reject "08".
+            case "$INPUT_WINDOW_DAYS" in
+              *[!0-9]*|????*) WINDOW_INVALID=1 ;;
+              *[!0]*)          WINDOW_INVALID= ;;
+              *)               WINDOW_INVALID=1 ;;
+            esac
+            # An upper bound because a window wider than the backfill collapses
+            # iter_date_windows to one request, discarding the per-window
+            # checkpoint that makes a long run restartable. 20-30 is the useful
+            # range; 90 is the generous ceiling.
+            if [ -n "$WINDOW_INVALID" ] || [ "$INPUT_WINDOW_DAYS" -gt 90 ]; then
+              echo "::error::insights_load_window_days must be an integer from 1 to 90, got '$INPUT_WINDOW_DAYS'"
+              exit 1
+            fi
+          fi
+
+          # Optional, so empty passes. This is a typo guard, NOT an injection
+          # guard: the value reaches an `env:` entry in _reusable-etl.yml, never
+          # a `run:` block, so it is never re-parsed as shell. The authority is
+          # resolve_dataset_name(), which applies the same shape with
+          # re.fullmatch and additionally refuses any override when
+          # GITHUB_EVENT_NAME=schedule. Matched with [[ =~ ]] and not grep:
+          # grep anchors per line, so ^...$ would pass a value whose first line
+          # happens to be valid. The {1,32} mirrors the Python, so an over-long
+          # name fails here instead of after checkout and pip install.
+          if [ -n "$INPUT_DATASET" ] && ! [[ "$INPUT_DATASET" =~ ^(fb|fb_smoke_[a-z0-9_]{1,32})$ ]]; then
+            echo "::error::dataset_name_override must be 'fb' or 'fb_smoke_<name>', got '$INPUT_DATASET'"
+            exit 1
+          fi
+
+          # Both inputs are Facebook-only. FB_INSIGHTS_LOAD_WINDOW_DAYS is read
+          # by the shared run_insights_in_windows, so esim_facebook and
+          # subscription_facebook honor it too; FB_DATASET_NAME is travel-only,
+          # since those two hardcode their datasets. Reject the mismatch rather
+          # than dropping the value silently in _reusable-etl.yml.
+          case "$INPUT_PIPELINE" in
+            *facebook*) ;;
+            *)
+              if [ -n "$INPUT_WINDOW_DAYS" ]; then
+                echo "::error::insights_load_window_days applies only to Facebook pipelines, got pipeline '$INPUT_PIPELINE'"
+                exit 1
+              fi
+              ;;
+          esac
+          if [ -n "$INPUT_DATASET" ] && [ "$INPUT_PIPELINE" != "facebook" ]; then
+            echo "::error::dataset_name_override applies only to the travel 'facebook' pipeline, got '$INPUT_PIPELINE'"
+            exit 1
+          fi
+
           # _reusable-etl.yml interpolates inputs.group straight into run: blocks,
           # so reject anything that is not a plain group name.
           INVALID=$(echo "$GROUPS_JSON" | jq -r '.[] | select(test("^[A-Za-z0-9_-]+$") | not)')
@@ -90,4 +163,6 @@ jobs:
       group: ${{ matrix.group }}
       backfill_days: ${{ inputs.days }}
       pipeline_name_suffix: _backfill_${{ matrix.group }}_${{ github.run_id }}
+      insights_load_window_days: ${{ inputs.insights_load_window_days }}
+      dataset_name_override: ${{ inputs.dataset_name_override }}
     secrets: inherit

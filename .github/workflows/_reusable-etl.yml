@@ -26,6 +26,16 @@ on:
         required: false
         type: string
         default: "auto"
+      insights_load_window_days:
+        description: "Facebook Insights window size in days (optional; default 8)"
+        required: false
+        type: string
+        default: ""
+      dataset_name_override:
+        description: "Facebook dataset override for isolated smoke runs (optional; fb or fb_smoke_*)"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   etl:
@@ -114,6 +124,12 @@ jobs:
           SUB_FB_BACKFILL_DAYS: ${{ inputs.pipeline == 'subscription_facebook' && inputs.backfill_days || '' }}
           SUB_GOOGLE_BACKFILL_DAYS: ${{ inputs.pipeline == 'subscription_google' && inputs.backfill_days || '' }}
           FB_CREATIVE_REFRESH_MODE: ${{ inputs.facebook_creative_refresh_mode }}
+          # `contains`, not `== 'facebook'`: positive_int_env reads this inside
+          # the shared run_insights_in_windows, which esim_facebook and
+          # subscription_facebook also reach, so they honor it too. FB_DATASET_NAME
+          # stays travel-only — those two hardcode their datasets.
+          FB_INSIGHTS_LOAD_WINDOW_DAYS: ${{ contains(inputs.pipeline, 'facebook') && inputs.insights_load_window_days || '' }}
+          FB_DATASET_NAME: ${{ inputs.pipeline == 'facebook' && inputs.dataset_name_override || '' }}
           # Set pipeline name suffix if provided
           PIPELINE_NAME_SUFFIX: ${{ inputs.pipeline_name_suffix }}
         run: |
