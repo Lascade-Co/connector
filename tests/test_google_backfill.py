@@ -117,16 +117,16 @@ class AccountSelectionTests(unittest.TestCase):
 
 
 class GoogleDateResourceTests(unittest.TestCase):
-    def test_both_metric_queries_use_exact_requested_bounds(self):
-        for source in (sources.ads_metrics, sources.conversion_actions):
+    def test_every_metric_query_uses_exact_requested_bounds(self):
+        for source in (sources.ads_metrics, sources.conversion_actions, sources.campaign_metrics):
             with self.subTest(source=source.name), patch.object(sources, "run_query", return_value=iter([])) as query:
                 resource = source(client=None, customer_id=ACCOUNT_A, group_name="d1", start_date="2026-09-01", end_date="2026-10-30")
                 self.assertEqual(list(resource), [])
                 self.assertEqual(query.call_args.args[1], ACCOUNT_A)
                 self.assertIn("BETWEEN '2026-09-01' AND '2026-10-30'", query.call_args.args[2])
 
-    def test_both_metric_queries_preserve_rolling_scheduled_behavior(self):
-        for source in (sources.ads_metrics, sources.conversion_actions):
+    def test_every_metric_query_preserves_rolling_scheduled_behavior(self):
+        for source in (sources.ads_metrics, sources.conversion_actions, sources.campaign_metrics):
             with self.subTest(source=source.name), patch.object(sources, "run_query", return_value=iter([])) as query:
                 list(source(client=None, customer_id=ACCOUNT_A, group_name="d1", days_back=7))
                 end = datetime.date.today()
@@ -137,6 +137,7 @@ class GoogleDateResourceTests(unittest.TestCase):
         expected = {
             "google_ads": {"account_id", "ad_id", "date"},
             "google_ads_conversion_actions": {"account_id", "ad_id", "date", "conversion_action"},
+            "google_ads_campaign_metrics": {"account_id", "campaign_id", "date"},
         }
         self.assertEqual({resource.name for resource in backfill.METRIC_SOURCES}, set(expected))
         for source in backfill.METRIC_SOURCES:
@@ -189,7 +190,8 @@ class BackfillRunnerTests(unittest.TestCase):
         self.assertEqual(client.call_count, 2)
         self.assertEqual([call.kwargs["pipeline_name"] for call in factory.call_args_list], ["google_ads_d1_backfill_123_2", "google_ads_m4_backfill_123_2"])
         self.assertEqual(len(resources_seen), 3)
-        self.assertEqual([call.args[1] for call in query.call_args_list], [ACCOUNT_A, ACCOUNT_A, ACCOUNT_B, ACCOUNT_B, ACCOUNT_C, ACCOUNT_C])
+        # Three queries per account because len(METRIC_SOURCES) is 3; bump this when a resource is added.
+        self.assertEqual([call.args[1] for call in query.call_args_list], [ACCOUNT_A] * 3 + [ACCOUNT_B] * 3 + [ACCOUNT_C] * 3)
         for call in query.call_args_list:
             self.assertIn("BETWEEN '2026-09-01' AND '2026-10-30'", call.args[2])
         info.raise_on_failed_jobs.assert_has_calls([unittest.mock.call(), unittest.mock.call(), unittest.mock.call()])

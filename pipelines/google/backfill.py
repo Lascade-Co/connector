@@ -12,11 +12,11 @@ from dlt.sources.credentials import GcpOAuthCredentials
 
 from google_ads import get_client
 from pipelines.google.date_range import reporting_dates
-from pipelines.google.sources import ads_metrics, conversion_actions
+from pipelines.google.sources import ads_metrics, campaign_metrics, conversion_actions
 from utils import setup_logging
 
 # Current-state resources use replace and must never join an account-only load.
-METRIC_SOURCES = (ads_metrics, conversion_actions)
+METRIC_SOURCES = (ads_metrics, conversion_actions, campaign_metrics)
 
 
 def normalize_account_id(value):
@@ -109,7 +109,7 @@ def run():
             summary.write(f"### Google Ads backfill completed\n\nDates: {start} through {end} (inclusive).\n\n")
             for name, accounts in selected.items():
                 summary.write(f"- **{name}**: {', '.join(accounts)}\n")
-            summary.write("\nRefreshed ad metrics and conversion actions using merges. Current-day data remains provisional.\n")
+            summary.write("\nRefreshed ad metrics, conversion actions, and campaign metrics using merges. Current-day data remains provisional.\n")
 
 
 if __name__ == "__main__":

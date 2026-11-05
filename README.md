@@ -173,10 +173,10 @@ For Google Ads, open **Actions → Google Ads Backfill → Run workflow**:
 
 For example, select account `2749505452`, group `d1`, start `2026-09-01`,
 and end `2026-10-30`. Dates follow each Google Ads account's reporting timezone;
-today's results are provisional. The backfill merges ad metrics and conversion
-actions into their existing tables. It does not refresh shared campaign budgets
-or account-directory tables. Google backfills and daily Google loads run one at a
-time to protect their shared staging tables.
+today's results are provisional. The backfill merges ad metrics, conversion
+actions, and campaign metrics into their existing tables. It does not refresh
+shared campaign budgets or account-directory tables. Google backfills and daily
+Google loads run one at a time to protect their shared staging tables.
 
 The **Unified Manual Backfill** workflow (`.github/workflows/backfill.yml`)
 continues to provide group and day-count backfills for the other pipelines.

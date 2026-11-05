@@ -1,4 +1,3 @@
-import datetime
 import logging
 import os
 from typing import Iterator
@@ -105,24 +104,31 @@ def ads_metrics(
 def campaign_metrics(
         client: GoogleAdsClient,
         customer_id: str,
-        group_name: str, days_back: int = ROLLING_DAYS
+        group_name: str, days_back: int = ROLLING_DAYS,
+        *, start_date: str = None, end_date: str = None,
 ) -> Iterator[TDataItem]:
     """
     Fetches campaign-grain spend and performance metrics.
 
     Exists because ads_metrics reads FROM ad_group_ad, which has no rows for
     Performance Max campaigns, so their spend never loads.
+
+    Accepts explicit inclusive start_date/end_date bounds for account-scoped
+    backfills, like ads_metrics.
     """
-    end = datetime.date.today()
-    start = end - datetime.timedelta(days=days_back)
+    start, end = reporting_dates(days_back, start_date=start_date, end_date=end_date)
     query = CAMPAIGN_METRICS_QUERY.format(start=start, end=end)
 
+    # One warning per run, not per row: run_query is account-scoped, so the currency is
+    # invariant here, and a full-history backfill would otherwise log one line per campaign-day.
+    warned = False
     for r in run_query(client, customer_id, query):
         m = r.metrics
 
         # Nothing converts Google cost to AED (unlike pipelines/facebook/currency.py),
         # and every downstream consumer sums these as AED.
-        if r.customer.currency_code != "AED":
+        if r.customer.currency_code != "AED" and not warned:
+            warned = True
             logging.warning(
                 f"Account {r.customer.id} ({r.customer.descriptive_name}) bills in "
                 f"{r.customer.currency_code}, not AED - its cost_micros will be summed as AED"

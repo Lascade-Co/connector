@@ -115,15 +115,22 @@ class GoogleCampaignMetricsTests(unittest.TestCase):
         self.assertEqual(columns["conversions_by_conversion_date"]["data_type"], "double")
         self.assertEqual(columns["conversions_value_by_conversion_date"]["data_type"], "double")
 
-    def test_warns_when_an_account_does_not_bill_in_aed(self):
-        row = _campaign_row()
-        row.customer.currency_code = "GBP"
+    def test_a_non_aed_account_warns_once_per_run_not_once_per_row(self):
+        # A full-history backfill yields tens of thousands of campaign-days. Warning per
+        # row buried the Actions log; a single row would pass either way, so feed two.
+        rows = []
+        for _ in range(2):
+            row = _campaign_row()
+            row.customer.currency_code = "GBP"
+            rows.append(row)
 
-        with patch.object(sources, "run_query", return_value=iter([row])):
+        with patch.object(sources, "run_query", return_value=iter(rows)):
             with self.assertLogs(level="WARNING") as logs:
-                list(sources.campaign_metrics(client=None, customer_id="1", group_name="d1"))
+                emitted = list(sources.campaign_metrics(client=None, customer_id="1", group_name="d1"))
 
-        self.assertIn("GBP", "".join(logs.output))
+        self.assertEqual(len(emitted), 2)
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("GBP", logs.output[0])
 
 
 class GoogleCustomerClientsTests(unittest.TestCase):
