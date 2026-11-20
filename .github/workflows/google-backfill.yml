@@ -1,5 +1,5 @@
 name: Google Ads Backfill
-run-name: Google Ads backfill | ${{ inputs.account_id }} | ${{ inputs.group }} | ${{ inputs.start_date }} to ${{ inputs.end_date }}
+run-name: Google Ads backfill | ${{ inputs.group }} | ${{ inputs.start_date }} to ${{ inputs.end_date }}
 
 on:
   workflow_dispatch:
@@ -70,12 +70,18 @@ jobs:
 
       - name: Backfill selected Google Ads accounts
         env:
-          GOOGLE_BACKFILL_ACCOUNT_ID: ${{ inputs.account_id }}
           GOOGLE_BACKFILL_GROUP: ${{ inputs.group }}
           GOOGLE_BACKFILL_START_DATE: ${{ inputs.start_date }}
           GOOGLE_BACKFILL_END_DATE: ${{ inputs.end_date }}
           PIPELINE_NAME_SUFFIX: _backfill_${{ github.run_id }}_${{ github.run_attempt }}
-        run: python -m pipelines.google.backfill
+        run: |
+          # Read from the event payload: a step env: header is printed publicly.
+          GOOGLE_BACKFILL_ACCOUNT_ID=$(jq -r '.inputs.account_id // empty' "$GITHUB_EVENT_PATH")
+          if [ -n "$GOOGLE_BACKFILL_ACCOUNT_ID" ]; then
+            echo "::add-mask::$GOOGLE_BACKFILL_ACCOUNT_ID"
+          fi
+          export GOOGLE_BACKFILL_ACCOUNT_ID
+          python -m pipelines.google.backfill
 
       - if: always()
         uses: Lascade-Co/actions/actions/seal-upload@seal-v1
