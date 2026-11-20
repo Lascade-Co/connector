@@ -7,6 +7,10 @@ on:
 
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: seal-bash-e {0}
+
 concurrency:
   group: half_hourly_db_sync
   cancel-in-progress: false
@@ -21,6 +25,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Seal job output
+        uses: Lascade-Co/actions/actions/seal@seal-v1
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -34,10 +41,14 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Setup Secrets
-        run: echo "${{ secrets.SECRETS }}" | base64 --decode > .dlt/secrets.toml
+        env:
+          DLT_SECRETS: ${{ secrets.SECRETS }}
+        run: echo "$DLT_SECRETS" | base64 --decode > .dlt/secrets.toml
 
       - name: Run main.py
-        run: python main.py "db" "${{ matrix.group }}"
+        env:
+          GROUP: ${{ matrix.group }}
+        run: python main.py "db" "$GROUP"
 
       # This job does not route through _reusable-etl.yml, so it needs its own copy
       # of the failure notification. Inert until SLACK_WEBHOOK_URL is set.
@@ -56,3 +67,6 @@ jobs:
             '{text: ":rotating_light: ETL failed: *db replication* (group `\($group)`)\n\($url)"}' \
           | curl -sS --max-time 10 -X POST -H 'Content-Type: application/json' \
               --data @- "$SLACK_WEBHOOK_URL" || true
+
+      - if: always()
+        uses: Lascade-Co/actions/actions/seal-upload@seal-v1

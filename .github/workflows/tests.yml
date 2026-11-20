@@ -8,11 +8,18 @@ on:
   pull_request:
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: seal-bash-e {0}
+
 jobs:
   unittest:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Seal job output
+        uses: Lascade-Co/actions/actions/seal@seal-v1
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -29,3 +36,6 @@ jobs:
 
       - name: Run tests
         run: python -m unittest discover -s tests -t . -v
+
+      - if: always()
+        uses: Lascade-Co/actions/actions/seal-upload@seal-v1

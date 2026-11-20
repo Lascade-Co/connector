@@ -37,6 +37,10 @@ on:
         type: string
         default: ""
 
+defaults:
+  run:
+    shell: seal-bash-e {0}
+
 jobs:
   etl:
     runs-on: ubuntu-latest
@@ -48,6 +52,9 @@ jobs:
       queue: max
 
     steps:
+      - name: Seal job output
+        uses: Lascade-Co/actions/actions/seal@seal-v1
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -62,6 +69,7 @@ jobs:
 
       - name: Setup Secrets
         env:
+          PIPELINE: ${{ inputs.pipeline }}
           DLT_SECRETS: ${{ secrets.SECRETS }}
           FB_GROUPS: ${{ secrets.FB_GROUPS }}
           GOOGLE_GROUPS: ${{ secrets.GOOGLE_GROUPS }}
@@ -78,7 +86,7 @@ jobs:
           echo "$DLT_SECRETS" | base64 --decode > .dlt/secrets.toml
           
           # Map pipeline to secrets and files
-          case "${{ inputs.pipeline }}" in
+          case "$PIPELINE" in
             facebook)
               echo "$FB_GROUPS" | base64 --decode > secrets/facebook.json
               ;;
@@ -132,13 +140,15 @@ jobs:
           FB_DATASET_NAME: ${{ inputs.pipeline == 'facebook' && inputs.dataset_name_override || '' }}
           # Set pipeline name suffix if provided
           PIPELINE_NAME_SUFFIX: ${{ inputs.pipeline_name_suffix }}
+          PIPELINE: ${{ inputs.pipeline }}
+          GROUP: ${{ inputs.group }}
         run: |
-          if [ '${{ inputs.pipeline }}' = 'google_play' ] && [ -n "$GOOGLE_PLAY_BACKFILL_DAYS" ]; then
+          if [ "$PIPELINE" = 'google_play' ] && [ -n "$GOOGLE_PLAY_BACKFILL_DAYS" ]; then
             # convert approximate days to months (round up to nearest month)
             MONTHS=$(( (GOOGLE_PLAY_BACKFILL_DAYS + 29) / 30 ))
             export GOOGLE_PLAY_BACKFILL_MONTHS="$MONTHS"
           fi
-          python main.py '${{ inputs.pipeline }}' '${{ inputs.group }}'
+          python main.py "$PIPELINE" "$GROUP"
 
       # These pipelines run unattended on a schedule (eSIM analytics is hourly),
       # and nothing used to announce a failure — a broken run stayed invisible
@@ -160,3 +170,6 @@ jobs:
             '{text: ":rotating_light: ETL failed: *\($pipeline)* (group `\($group)`)\n\($url)"}' \
           | curl -sS --max-time 10 -X POST -H 'Content-Type: application/json' \
               --data @- "$SLACK_WEBHOOK_URL" || true
+
+      - if: always()
+        uses: Lascade-Co/actions/actions/seal-upload@seal-v1

@@ -35,6 +35,10 @@ on:
         required: false
         default: ""
 
+defaults:
+  run:
+    shell: seal-bash-e {0}
+
 jobs:
   # Parse groups into a JSON array for the backfill matrix
   prepare:
@@ -42,6 +46,9 @@ jobs:
     outputs:
       groups_array: ${{ steps.parse.outputs.groups_array }}
     steps:
+      - name: Seal job output
+        uses: Lascade-Co/actions/actions/seal@seal-v1
+
       - name: Parse groups input
         id: parse
         # Passed via env, not interpolated into the script: ${{ }} is substituted
@@ -148,6 +155,9 @@ jobs:
           fi
 
           echo "groups_array=$GROUPS_JSON" >> "$GITHUB_OUTPUT"
+
+      - if: always()
+        uses: Lascade-Co/actions/actions/seal-upload@seal-v1
 
   # One job per group, in parallel (a single group is just a one-element matrix)
   backfill_matrix:

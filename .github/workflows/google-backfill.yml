@@ -26,6 +26,10 @@ on:
         type: string
         required: true
 
+defaults:
+  run:
+    shell: seal-bash-e {0}
+
 permissions:
   contents: read
 
@@ -39,6 +43,9 @@ jobs:
       cancel-in-progress: false
       queue: max
     steps:
+      - name: Seal job output
+        uses: Lascade-Co/actions/actions/seal@seal-v1
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -69,3 +76,6 @@ jobs:
           GOOGLE_BACKFILL_END_DATE: ${{ inputs.end_date }}
           PIPELINE_NAME_SUFFIX: _backfill_${{ github.run_id }}_${{ github.run_attempt }}
         run: python -m pipelines.google.backfill
+
+      - if: always()
+        uses: Lascade-Co/actions/actions/seal-upload@seal-v1
